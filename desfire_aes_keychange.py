@@ -46,7 +46,15 @@ class DESFireAES:
         return response
     
     def crc32_desfire(self, data):
-        """Calculate CRC32 as used in DESFire (polynomial 0xEDB88320)"""
+        """
+        Calcula el CRC32 según la especificación DESFire (polynomial 0xEDB88320)
+        
+        Parámetros:
+            data (bytes): Datos para calcular el CRC
+            
+        Retorna:
+            int: CRC de 4 bytes
+        """
         poly = 0xEDB88320
         crc = 0xFFFFFFFF
         
@@ -59,7 +67,7 @@ class DESFireAES:
                     crc >>= 1
         
         return crc & 0xFFFFFFFF
-    
+
     def pad_data(self, data):
         """Add padding for AES encryption (0x80 + 0x00s)"""
         padded = bytearray(data)
@@ -239,6 +247,7 @@ class DESFireAES:
         # Calculate CRC of the cryptogram (command + key_number + new_key + key_version)
         crypto_data = bytes([0xC4, key_number]) + new_key + bytes([new_key_version])
         crc_crypto = self.crc32_desfire(crypto_data)
+        
         print(f"* CRC Crypto: 0x{crc_crypto:08X}")
         
         # Build cryptogram: new_key + key_version + crc_crypto (little endian) + padding
@@ -474,6 +483,8 @@ def main():
     
     # Current key (all zeros for this example)
     current_key = bytes(16)  # 16 zeros for AES
+    current_key = bytes([0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70,
+                     0x80, 0x90, 0xA0, 0xB0, 0xB0, 0xA0, 0x90, 0x80])
     
     # New key to set
     new_key = bytes([0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70,
@@ -518,12 +529,13 @@ if __name__ == "__main__":
     print("DESFire EV1 AES Authentication and Key Change")
     print("=" * 50)
     
-    print("VERIFICANDO EL CAMBIO DE CLAVE...")
-    verify_key_change()
+    # print("VERIFICANDO EL CAMBIO DE CLAVE...")
+    # verify_key_change()
     
-    # success = verify_key_change()
+    # # success = verify_key_change()
     
-    # if success:
-    #     print("DESFire EV1 AES Authentication and Key Change v2")
-    #     print("=" * 50)
-    #     main()
+    # # if success:
+
+    print("DESFire EV1 AES Authentication and Key Change v2")
+    print("=" * 50)
+    main()
