@@ -676,7 +676,258 @@ class DESFireFormatter:
         cipher = AES.new(bytes(key), AES.MODE_CBC, iv)
         return list(cipher.encrypt(bytes(data)))
 
-    def change_key(self, key_no, new_key, current_key=None, key_version=0x00):
+    def pad_pkcs7(self, data, block_size=16):
+        pad_len = block_size - (len(data) % block_size)
+        return data + [pad_len] * pad_len
+    
+    def change_key(self, key_no, new_key, oldKey, key_version=0x01):
+        """
+        Cambia una clave en DESFire EV1 usando el protocolo nativo
+        
+        Args:
+            key_no (int): Número de clave (0-13)
+            new_key (bytes): Nueva clave AES de 16 bytes
+            key_version (int): Versión de la clave (default: 0x01)
+        """
+        try:
+            # Importar la biblioteca de cifrado si aún no está disponible
+            from Crypto.Cipher import AES
+        except ImportError:
+            print("Error: PyCryptodome es necesario para cifrar el comando ChangeKey")
+            print("Instale con: pip install pycryptodome")
+            return False
+        # if not self.authenticated_with_key:
+        #     raise Exception("Debe autenticarse antes de cambiar claves")
+        
+        if len(new_key) != 16:
+            raise ValueError("La clave AES debe ser de 16 bytes")
+        
+        try:
+            # Para clave maestra AES, establecer bit 7
+            effective_key_no = 0x80 if key_no == 0 else key_no
+            
+            print(f"=== Cambiando clave #{key_no} ===")
+            print(f"Nueva clave: {new_key.hex()}")
+            print(f"Effective key_no: 0x{effective_key_no:02X}")
+            
+            # Construir datos para cifrar
+            # Formato: [16 bytes clave] [1 byte versión] [4 bytes CRC]
+            plain_data = bytearray()
+            plain_data.extend(new_key)  # 16 bytes
+            plain_data.append(key_version)  # 1 byte
+            
+            # Calcular CRC32 de la nueva clave
+            crc = self.calculate_crc32(new_key)
+            plain_data.extend(crc.to_bytes(4, 'little'))
+            
+            print(f"Datos antes del padding: {plain_data.hex()} (longitud: {len(plain_data)})")
+            
+            # Aplicar padding PKCS#7 para AES (múltiplo de 16)
+            padding_needed = 16 - (len(plain_data) % 16)
+            plain_data.extend([padding_needed] * padding_needed)
+            
+            print(f"Datos con padding: {plain_data.hex()} (longitud: {len(plain_data)})")
+            
+            # Cifrar usando la clave de sesión
+            if not hasattr(self, 'session_key') or not self.session_key:
+                raise Exception("No hay clave de sesión disponible")
+            
+            # IV para cifrado (usar IV actual o ceros)
+            iv = getattr(self, 'current_iv', bytes(16))
+            cipher = AES.new(self.session_key, AES.MODE_CBC, iv)
+            encrypted_data = cipher.encrypt(bytes(plain_data))
+            
+            print(f"Datos cifrados: {encrypted_data.hex()}")
+            
+            # Construir APDU para DESFire
+            # CLA=0x90, INS=0xC4, P1=key_no, P2=0x00, Lc=longitud, Data=cifrado
+            apdu = [0x90, 0xC4, effective_key_no, 0x00, len(encrypted_data)] + list(encrypted_data)
+            
+            print(f"APDU: {' '.join(f'{b:02X}' for b in apdu)}")
+            
+            # Enviar comando
+            data, sw1, sw2 = self.connection.transmit(apdu)
+            
+            print(f"Respuesta: data={[hex(b) for b in data] if data else 'Sin datos'}, SW={sw1:02X} {sw2:02X}")
+            
+            if sw1 == 0x90 and sw2 == 0x00:
+                print(f"✓ Clave #{key_no} cambiada exitosamente")
+                return True
+            else:
+                error_msg = self.get_error_message(sw1, sw2)
+                print(f"✗ Error al cambiar la clave: {error_msg}")
+                return False
+                
+        except Exception as e:
+            print(f"Excepción en change_key: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def calculate_crc32(self, data):
+        """
+        Calcula CRC32 según el polinomio DESFire
+        Polinomio: x32 + x26 + x23 + x22 + x16 + x12 + x11 + x10 + x8 + x7 + x5 + x4 + x2 + x + 1
+        """
+        poly = 0xEDB88320
+        crc = 0xFFFFFFFF
+        
+        for byte in data:
+            crc ^= byte
+            for _ in range(8):
+                if crc & 1:
+                    crc = (crc >> 1) ^ poly
+                else:
+                    crc >>= 1
+        
+        return crc & 0xFFFFFFFF  # Asegurar 32 bits
+
+    # Alternativa más simple - Comando directo sin wrapper APDU
+    def change_key_direct(self, key_no, new_key, key_version=0x01):
+        """
+        Método alternativo enviando comando DESFire directamente
+        """
+        if not self.authenticated_with_key:
+            raise Exception("Debe autenticarse antes de cambiar claves")
+        
+        try:
+            # Para clave maestra AES
+            if key_no == 0:
+                key_no = 0x80
+            
+            # Preparar datos
+            command_data = bytearray(new_key)  # 16 bytes clave
+            command_data.append(key_version)   # 1 byte versión
+            
+            # CRC de la nueva clave
+            crc = self.calculate_crc32(new_key)
+            command_data.extend(crc.to_bytes(4, 'little'))
+            
+            # Padding
+            command_data.append(0x80)
+            while len(command_data) % 16 != 0:
+                command_data.append(0x00)
+            
+            # Cifrar
+            encrypted_data = self.encrypt_data(bytes(command_data))
+            
+            # Comando DESFire nativo
+            cmd = [0xC4, key_no] + list(encrypted_data)
+            
+            print(f"Comando directo: {' '.join(f'{b:02X}' for b in cmd)}")
+            
+            # Enviar directamente (si tu lector soporta comandos nativos)
+            data, sw1, sw2 = self.connection.transmit(cmd)
+            
+            return sw1 == 0x90 and sw2 == 0x00
+            
+        except Exception as e:
+            print(f"Error en change_key_direct: {e}")
+            return False
+    def calculate_crc32(self, data):
+        """
+        Calcula CRC32 según el polinomio DESFire
+        Polinomio: x32 + x26 + x23 + x22 + x16 + x12 + x11 + x10 + x8 + x7 + x5 + x4 + x2 + x + 1
+        """
+        poly = 0xEDB88320
+        crc = 0xFFFFFFFF
+        
+        for byte in data:
+            crc ^= byte
+            for _ in range(8):
+                if crc & 1:
+                    crc = (crc >> 1) ^ poly
+                else:
+                    crc >>= 1
+        
+        return crc & 0xFFFFFFFF  # Asegurar 32 bits
+
+    # Alternativa más simple - Comando directo sin wrapper APDU
+    def change_key_direct(self, key_no, new_key, key_version=0x01):
+        """
+        Método alternativo enviando comando DESFire directamente
+        """
+        if not self.authenticated_with_key:
+            raise Exception("Debe autenticarse antes de cambiar claves")
+        
+        try:
+            # Para clave maestra AES
+            if key_no == 0:
+                key_no = 0x80
+            
+            # Preparar datos
+            command_data = bytearray(new_key)  # 16 bytes clave
+            command_data.append(key_version)   # 1 byte versión
+            
+            # CRC de la nueva clave
+            crc = self.calculate_crc32(new_key)
+            command_data.extend(crc.to_bytes(4, 'little'))
+            
+            # Padding
+            command_data.append(0x80)
+            while len(command_data) % 16 != 0:
+                command_data.append(0x00)
+            
+            # Cifrar
+            encrypted_data = self.encrypt_data(bytes(command_data))
+            
+            # Comando DESFire nativo
+            cmd = [0xC4, key_no] + list(encrypted_data)
+            
+            print(f"Comando directo: {' '.join(f'{b:02X}' for b in cmd)}")
+            
+            # Enviar directamente (si tu lector soporta comandos nativos)
+            data, sw1, sw2 = self.connection.transmit(cmd)
+            
+            return sw1 == 0x90 and sw2 == 0x00
+            
+        except Exception as e:
+            print(f"Error en change_key_direct: {e}")
+            return False
+    def encrypt_data(self, data):
+        try:
+            # Importar la biblioteca de cifrado si aún no está disponible
+            from Crypto.Cipher import AES
+        except ImportError:
+            print("Error: PyCryptodome es necesario para cifrar el comando ChangeKey")
+            print("Instale con: pip install pycryptodome")
+            return False
+        """
+        Cifra datos usando AES-CBC con la clave de sesión
+        """
+        if not self.session_key:
+            raise Exception("No hay clave de sesión disponible")
+        
+        # Usar el último bloque enviado como IV (o IV actual)
+        iv = self.current_iv if hasattr(self, 'current_iv') else bytes(16)
+        
+        cipher = AES.new(self.session_key, AES.MODE_CBC, iv)
+        encrypted = cipher.encrypt(data)
+        
+        # Actualizar IV para próxima operación
+        self.current_iv = encrypted[-16:]
+        
+        return encrypted
+
+    def calculate_crc32(self, data):
+        """
+        Calcula CRC32 según el polinomio DESFire
+        Polinomio: x32 + x26 + x23 + x22 + x16 + x12 + x11 + x10 + x8 + x7 + x5 + x4 + x2 + x + 1
+        """
+        poly = 0xEDB88320
+        crc = 0xFFFFFFFF
+        
+        for byte in data:
+            crc ^= byte
+            for _ in range(8):
+                if crc & 1:
+                    crc = (crc >> 1) ^ poly
+                else:
+                    crc >>= 1
+        
+        return crc
+
+    def change_key_old_10(self, key_no, new_key, current_key=None, key_version=0x00):
         """
         Cambia una clave en la aplicación seleccionada actualmente
         Versión corregida para resolver error de integridad
@@ -735,6 +986,10 @@ class DESFireFormatter:
         if changing_auth_key:
             # No es necesario XOR si es la clave con la que estamos autenticados
             key_data = new_key + [key_version]
+            
+            # agregamos el CRC32(NewKey + Versión) (ADD)
+            new_key_crc = self._calculate_crc32(new_key + [key_version])
+            key_data += new_key_crc
         else:
             # XOR entre la nueva clave y la actual
             key_data = []
@@ -753,37 +1008,26 @@ class DESFireFormatter:
         # -------------------------------------------------------------------------
         # SIMPLIFICACIÓN IMPORTANTE: Vamos a intentar un enfoque más directo
         # -------------------------------------------------------------------------
-        
-        # Verificar si estamos cambiando una clave de otra aplicación o PICC
-        change_other_app = False  # Establecer a True si cambiamos clave de otra aplicación
-        
-        # Aplicar bit de modificación si es necesario
-        actual_key_no = key_no
-        if change_other_app:
-            actual_key_no |= 0x80
-        
-        # Construir comando directo (sin cifrado adicional)
-        # Esto simplifica el proceso para identificar el problema
-        cmd_data = [0xC4, actual_key_no] + key_data
-        
-        # Construir el APDU final
-        # apdu = [0x90] + cmd_data + [0x00]
-        # # Insertar la longitud como cuarto byte (después de 0x90, 0xC4, 0x00)
-        # apdu.insert(4, len(cmd_data))
-        
-        # ###### gpt
-
-        # Generar IV de ceros
+        # print(f"Clave de sesión generada: {bytes(session_key).hex()}")
+            
+        padded = self.pad_pkcs7(key_data, 16)
+        # Convertimos a bytes
+        # key_bytes = bytes(padded)
+        # aes_key_bytes = bytes(self.session_key)
+        key_bytes = padded
+        aes_key_bytes = self.session_key
         iv = bytes([0x00] * 16)
+        encrypted = self.aes_encrypt(key_bytes, aes_key_bytes, iv=iv)
 
-        # Cifrar key_data
-        encrypted_data = self.aes_encrypt(new_key, self.session_key, iv)
+        assert len(encrypted) == 32
+        assert len(aes_key_bytes) == 16
+        print("aes_key_bytes : ", aes_key_bytes, ", aes_key_bytes.hex ", aes_key_bytes.hex())
 
-        Lc = len(encrypted_data)
-        apdu = [0x90, 0xC4, 0x00, 0x00, Lc] + encrypted_data + [0x00]
-        # ###### 
-
-
+        Lc = len(encrypted)
+        apdu = [0x90, 0xC4, key_no] + encrypted
+        # apdu = [0x90, 0xC4, 0x00, 0x00, Lc] + encrypted
+        # apdu = [0x90, 0xC4, key_no, 0x00, 0x00, (len(encrypted) >> 8) & 0xFF, len(encrypted) & 0xFF] + encrypted + [0x00]
+        # apdu = [0x90, 0xC4, 0x00, 0x00, 0x00, 0x00, 0x20] + encrypted
         # Enviar comando
         response, sw1, sw2 = self.send_apdu(apdu)
         
@@ -802,6 +1046,9 @@ class DESFireFormatter:
             return True
         else:
             print(f"Error al cambiar la clave: SW={hex(sw1)}{hex(sw2)}")
+            # Comando: 90 C4 00 00 
+            # 20 
+            # 39 45 2D AB C6 7A 8A 4E 5A 60 83 B5 7C 9B 90 83 8D 69 B8 A7 BE CD 41 7C 4B 9B 8F EB 2D 43 38 AE
             
             # Interpretación de errores comunes
             if sw1 == OPERATION_OK:
@@ -814,6 +1061,68 @@ class DESFireFormatter:
                 elif sw2 == 0x7E:
                     print("Error: Error de longitud. El formato o longitud de los datos es incorrecto.")
             
+            return False
+        
+    def change_key_2(self, key_no, new_key, current_key=None, key_version=0x00):
+        print(f"\n=== Cambiando clave #{key_no} ===")
+
+        if not hasattr(self, 'authenticated_with_key') or self.authenticated_with_key is None:
+            print("Error: Debe autenticarse primero antes de cambiar claves")
+            return False
+
+        if current_key is None:
+            current_key = [0x00] * 16  # Clave por defecto
+
+        if isinstance(new_key, bytes):
+            new_key = list(new_key)
+        if isinstance(current_key, bytes):
+            current_key = list(current_key)
+
+        if len(new_key) != 16 or len(current_key) != 16:
+            print("Error: Las claves deben tener 16 bytes")
+            return False
+
+        try:
+            from Crypto.Cipher import AES
+        except ImportError:
+            print("Instale pycryptodome: pip install pycryptodome")
+            return False
+
+        # Paso 1: XOR entre nueva y actual
+        xor_result = [new_key[i] ^ current_key[i] for i in range(16)]
+
+        # Paso 2: ensamblar data = XOR + key_version + CRCs
+        key_data = xor_result + [key_version]
+
+        # Paso 3: CRC32 de new_key + version
+        crc_new = self._calculate_crc32(new_key + [key_version])
+        key_data += crc_new
+
+        # Paso 4: CRC32 del xor_result + version
+        crc_xor = self._calculate_crc32(xor_result + [key_version])
+        key_data += crc_xor
+
+        # Paso 5: cifrar con AES-ECB usando clave de sesión
+        padded = self.pad_pkcs7(key_data, 16)
+        key_bytes = padded
+        aes_key_bytes = self.session_key
+        iv = bytes([0x00] * 16)
+        encrypted = self.aes_encrypt(key_bytes, aes_key_bytes, iv=iv)
+
+        Lc = len(encrypted)
+        apdu = [0x90, 0xC4, 0x00, 0x00, Lc] + list(encrypted) + [0x00]
+        # apdu = [0x90, 0xC4, 0x00, 0x00, Lc] + encrypted + [0x00]
+        # apdu = [0x90, 0xC4, 0x00, 0x00, Lc] + encrypted
+
+        response, sw1, sw2 = self.send_apdu(apdu)
+
+        if sw1 == 0x91 and sw2 == 0x00:
+            print(f"Clave #{key_no} cambiada exitosamente")
+            if key_no == self.authenticated_with_key:
+                print("Advertencia: la clave autenticada ha sido modificada, reautentique para futuras operaciones.")
+            return True
+        else:
+            print(f"Error al cambiar la clave: SW={hex(sw1)}{hex(sw2)}")
             return False
 
     def _calculate_crc32(self, data):
