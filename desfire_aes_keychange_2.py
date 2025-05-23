@@ -46,15 +46,7 @@ class DESFireAES:
         return response
     
     def crc32_desfire(self, data):
-        """
-        Calcula el CRC32 según la especificación DESFire (polynomial 0xEDB88320)
-        
-        Parámetros:
-            data (bytes): Datos para calcular el CRC
-            
-        Retorna:
-            int: CRC de 4 bytes
-        """
+        """Calculate CRC32 as used in DESFire (polynomial 0xEDB88320)"""
         poly = 0xEDB88320
         crc = 0xFFFFFFFF
         
@@ -67,7 +59,7 @@ class DESFireAES:
                     crc >>= 1
         
         return crc & 0xFFFFFFFF
-
+    
     def pad_data(self, data):
         """Add padding for AES encryption (0x80 + 0x00s)"""
         padded = bytearray(data)
@@ -235,29 +227,42 @@ class DESFireAES:
         print("Authentication successful!")
         return True
     
-    def change_key(self, key_number, new_key, new_key_version=0x00):
-        """Change a key (same key used for authentication)"""
+    def change_key(self, key_number, new_key, new_key_version=0x00, current_key=None, authenticated_key_number=None):
+        """
+        Change a key in the current application
+        
+        Args:
+            key_number: Number of the key to change (0-13)
+            new_key: New key data (16 bytes for AES)
+            new_key_version: Version byte for the new key
+            current_key: Current key data (required if changing different key than authenticated)
+            authenticated_key_number: Key number used for authentication (for verification)
+        """
         if not self.authenticated:
             print("Error: Not authenticated")
             return False
         
-# Caso 1: Cambiar la MISMA clave (actual)
-
-# Cryptogram = nueva_clave + versión + CRC32
-# Más simple porque no necesitas la clave anterior
-
-# Caso 2: Cambiar OTRA clave diferente
-
-# Cryptogram = nueva_clave_XOR_clave_actual + versión + CRC32_nueva_clave + CRC32_cryptogram
-        
-        
         print(f"*** ChangeKey(KeyNo= {key_number})")
         print(f"* New Key: {new_key.hex().upper()}")
+        
+        # Determine if we're changing the same key or a different key
+        if authenticated_key_number is not None and authenticated_key_number != key_number:
+            # Changing a DIFFERENT key - need current key for XOR
+            if current_key is None:
+                print("Error: current_key is required when changing a different key")
+                return False
+            return self._change_different_key(key_number, new_key, new_key_version, current_key)
+        else:
+            # Changing the SAME key used for authentication
+            return self._change_same_key(key_number, new_key, new_key_version)
+    
+    def _change_same_key(self, key_number, new_key, new_key_version):
+        """Change the same key used for authentication"""
+        print("* Changing SAME key used for authentication")
         
         # Calculate CRC of the cryptogram (command + key_number + new_key + key_version)
         crypto_data = bytes([0xC4, key_number]) + new_key + bytes([new_key_version])
         crc_crypto = self.crc32_desfire(crypto_data)
-        
         print(f"* CRC Crypto: 0x{crc_crypto:08X}")
         
         # Build cryptogram: new_key + key_version + crc_crypto (little endian) + padding
@@ -274,7 +279,118 @@ class DESFireAES:
         encrypted_cryptogram = self.aes_encrypt_cbc(self.session_key, self.session_iv, cryptogram)
         print(f"* CryptogrEnc: {encrypted_cryptogram.hex().upper()}")
         
-        # Update session IV (last 16 characters)
+        # Update session IV
+        self.session_iv = encrypted_cryptogram[-16:]
+        
+        # Send ChangeKey command
+        command = bytes([0xC4, key_number]) + encrypted_cryptogram
+        response = self.send_command(command)
+        
+        if response[0] == 0x00:
+            print("Key changed successfully!")
+            # Calculate and verify CMAC if present
+            if len(response) > 1:
+                received_cmac = response[1:9]
+                expected_cmac = self.calculate_cmac(self.session_key, bytes([0x00]))
+                print(f"RX CMAC: {received_cmac.hex().upper()}")
+                print(f"Expected CMAC: {expected_cmac.hex().upper()}")
+            return True
+        else:
+            print(f"Key change failed: {response[0]:02X}")
+            return False
+    
+     
+    def _change_different_key(self, key_number, new_key, new_key_version, current_key):
+        """Change a DIFFERENT key than the one used for authentication"""
+        print("* Changing DIFFERENT key than authentication key")
+        print(f"* Current Key: {current_key.hex().upper()}")
+        
+        # XOR new key with current key
+        xored_key = bytes(a ^ b for a, b in zip(new_key, current_key))
+        print(f"* New Key XOR Current Key: {xored_key.hex().upper()}")
+        
+        # Calculate CRC of the NEW key (not XORed)
+        crc_new_key = self.crc32_desfire(new_key)
+        print(f"* CRC New Key: 0x{crc_new_key:08X}")
+        
+        # Calculate CRC of the cryptogram (command + key_number + XORed_key + key_version)
+        # NOTE: According to the PDF example, CRC crypto is calculated WITHOUT the CRC_new_key
+        crypto_data = bytes([0xC4, key_number]) + xored_key + bytes([new_key_version])
+        crc_crypto = self.crc32_desfire(crypto_data)
+        print(f"* CRC Cryptogram: 0x{crc_crypto:08X}")
+        
+        # Build cryptogram: XORed_key + key_version + CRC_crypto + CRC_new_key + padding
+        # CORRECTED ORDER: According to PDF example, CRC_crypto comes BEFORE CRC_new_key
+        cryptogram = xored_key + bytes([new_key_version])
+        cryptogram += struct.pack('<L', crc_crypto)    # CRC of cryptogram FIRST
+        cryptogram += struct.pack('<L', crc_new_key)   # CRC of new key SECOND
+        
+        # Pad to multiple of 16 bytes
+        while len(cryptogram) % 16 != 0:
+            cryptogram += b'\x00'
+        
+        print(f"* Cryptogram: {cryptogram.hex().upper()}")
+        
+        # Encrypt cryptogram with session key and current IV
+        encrypted_cryptogram = self.aes_encrypt_cbc(self.session_key, self.session_iv, cryptogram)
+        print(f"* CryptogrEnc: {encrypted_cryptogram.hex().upper()}")
+        
+        # Update session IV
+        self.session_iv = encrypted_cryptogram[-16:]
+        
+        # Send ChangeKey command
+        command = bytes([0xC4, key_number]) + encrypted_cryptogram
+        response = self.send_command(command)
+        
+        if response[0] == 0x00:
+            print("Key changed successfully!")
+            # Calculate and verify CMAC if present
+            if len(response) > 1:
+                received_cmac = response[1:9]
+                expected_cmac = self.calculate_cmac(self.session_key, bytes([0x00]))
+                print(f"RX CMAC: {received_cmac.hex().upper()}")
+                print(f"Expected CMAC: {expected_cmac.hex().upper()}")
+            return True
+        else:
+            print(f"Key change failed: {response[0]:02X}")
+            return False
+
+    def _change_different_key_2(self, key_number, new_key, new_key_version, current_key):
+        """Change a DIFFERENT key than the one used for authentication"""
+        print("* Changing DIFFERENT key than authentication key")
+        print(f"* Current Key: {current_key.hex().upper()}")
+        
+        # XOR new key with current key
+        xored_key = bytes(a ^ b for a, b in zip(new_key, current_key))
+        print(f"* New Key XOR Current Key: {xored_key.hex().upper()}")
+        
+        # Calculate CRC of the NEW key (not XORed)
+        crc_new_key = self.crc32_desfire(new_key)
+        print(f"* CRC New Key: 0x{crc_new_key:08X}")
+        
+        # Cryptogram = nueva_clave_XOR_clave_actual + versión + CRC32_nueva_clave + CRC32_cryptogram
+
+        # Calculate CRC of the cryptogram (command + key_number + XORed_key + key_version + CRC_new_key)
+        crypto_data = bytes([0xC4, key_number]) + xored_key + bytes([new_key_version]) + struct.pack('<L', crc_new_key)
+        crc_crypto = self.crc32_desfire(crypto_data)
+        print(f"* CRC Cryptogram: 0x{crc_crypto:08X}")
+        
+        # Build cryptogram: XORed_key + key_version + CRC_new_key + CRC_cryptogram + padding
+        cryptogram = xored_key + bytes([new_key_version])
+        cryptogram += struct.pack('<L', crc_crypto)    # CRC of cryptogram
+        cryptogram += struct.pack('<L', crc_new_key)   # CRC of new key
+        
+        # Pad to multiple of 16 bytes
+        while len(cryptogram) % 16 != 0:
+            cryptogram += b'\x00'
+        
+        print(f"* Cryptogram: {cryptogram.hex().upper()}")
+        
+        # Encrypt cryptogram with session key and current IV
+        encrypted_cryptogram = self.aes_encrypt_cbc(self.session_key, self.session_iv, cryptogram)
+        print(f"* CryptogrEnc: {encrypted_cryptogram.hex().upper()}")
+        
+        # Update session IV
         self.session_iv = encrypted_cryptogram[-16:]
         
         # Send ChangeKey command
@@ -428,9 +544,13 @@ def get_version():
         if reader.connection:
             reader.connection.disconnect()
 
-def verify_key_change():
-    """Verificar que la clave realmente cambió"""
-    print("\n*** Verificando cambio de clave ***")
+
+def demo_change_different_key():
+    """Demostrar cómo cambiar una clave diferente a la de autenticación"""
+    
+    print("\n" + "="*60)
+    print("DEMO: Cambiar una clave DIFERENTE a la de autenticación")
+    print("="*60)
     
     reader = SmartCardReader(debug=True)
     if not reader.connect_reader():
@@ -438,32 +558,54 @@ def verify_key_change():
     
     desfire = DESFireAES(reader)
     
-    # Misma aplicación
+    # Application ID
     aid = bytes([0xF0, 0x01, 0x01])
     
-    # LA NUEVA CLAVE
-    new_key = bytes([0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70,
-                     0x80, 0x90, 0xA0, 0xB0, 0xB0, 0xA0, 0x90, 0x80])
+    # Claves conocidas
+    master_key = bytes([0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70,
+                        0x80, 0x90, 0xA0, 0xB0, 0xB0, 0xA0, 0x90, 0x80])  # Nueva clave 0 del ejemplo anterior
     
+    key1_current = bytes(16)  # Clave 1 actual (supongamos que son ceros)
+    key1_new = bytes([0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+                      0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00])  # Nueva clave 1
+    key1_new = bytes(16)  # Clave 1 actual (supongamos que son ceros)
+
     try:
-        # Seleccionar aplicación
+        # Paso 1: Seleccionar aplicación
         if not desfire.select_application(aid):
             return False
         
-        # Intentar autenticarse con la NUEVA clave
-        if desfire.authenticate_aes(0, new_key):
-            print("✅ VERIFICACIÓN EXITOSA: La clave SÍ cambió!")
+        # Paso 2: Autenticarse con la clave 0 (master key)
+        print("\n--- Autenticándose con clave 0 (master) ---")
+        if not desfire.authenticate_aes(0, master_key):
+            return False
+        
+        # Paso 3: Cambiar la clave 1 (diferente a la clave 0 usada para autenticación)
+        print("\n--- Cambiando clave 1 (diferente a la de autenticación) ---")
+        success = desfire.change_key(
+            key_number=1,                    # Cambiar clave 1
+            new_key=key1_new,               # Nueva clave para key 1
+            new_key_version=0x20,           # Versión 0x20
+            current_key=key1_current,       # Clave actual de key 1
+            authenticated_key_number=0      # Nos autenticamos con clave 0
+        )
+        
+        if success:
+            print("\n✅ Clave 1 cambiada exitosamente!")
             return True
         else:
-            print("❌ La autenticación con la nueva clave falló")
+            print("\n❌ Falló el cambio de clave 1")
             return False
             
     except Exception as e:
-        print(f"Error en verificación: {e}")
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
     finally:
         if reader.connection:
             reader.connection.disconnect()
+
 
 def main():
     """Main function to demonstrate AES authentication and key change"""
@@ -491,15 +633,16 @@ def main():
     # Application ID: 0xF00101
     aid = bytes([0xF0, 0x01, 0x01])
     
-    # Current key (all zeros for this example)
-    current_key = bytes(16)  # 16 zeros for AES
+    # Current key (the one we changed to in previous run)
     current_key = bytes([0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70,
-                     0x80, 0x90, 0xA0, 0xB0, 0xB0, 0xA0, 0x90, 0x80])
+                         0x80, 0x90, 0xA0, 0xB0, 0xB0, 0xA0, 0x90, 0x80])
     
     # New key to set
-    new_key = bytes([0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70,
-                     0x80, 0x90, 0xA0, 0xB0, 0xB0, 0xA0, 0x90, 0x80])
+    new_key = bytes([0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA, 0x99, 0x88,
+                     0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00])
     
+    current_key_B = bytes(16)  # 16 zeros for AES
+
     try:
         # Step 1: Select application
         if not desfire.select_application(aid):
@@ -511,8 +654,16 @@ def main():
             print("Authentication failed. Check if key is correct.")
             return False
         
-        # Step 3: Change key 0 to new key
-        if not desfire.change_key(0, new_key, 0x10):  # Key version 0x10
+        # Step 3: Change key 0 to new key (SAME KEY)
+        # print("\n--- Ejemplo 1: Cambiar la MISMA clave (clave 0) ---")
+        # if not desfire.change_key(0, new_key, 0x30, authenticated_key_number=0):
+        #     print("Key change failed.")
+        #     return False
+        
+        # Step 4: Change key 2 to new key (SAME KEY)
+        print("\n--- Ejemplo 2: Cambiar otra clave (clave 1) ---")
+        # if not desfire.change_key(1, new_key, 0x30, current_key, authenticated_key_number=0):
+        if not desfire.change_key(1, current_key_B, 0x30, current_key_B, authenticated_key_number=0):
             print("Key change failed.")
             return False
         
@@ -533,19 +684,14 @@ def main():
             reader.connection.disconnect()
 
 
-
-
 if __name__ == "__main__":
     print("DESFire EV1 AES Authentication and Key Change")
     print("=" * 50)
     
-    # print("VERIFICANDO EL CAMBIO DE CLAVE...")
-    # verify_key_change()
+    # # Ejecutar ejemplo principal
+    # success = main()
     
-    # # success = verify_key_change()
-    
-    # # if success:
+    # if success:
+    # Ejecutar demo de cambio de clave diferente
+    demo_change_different_key()
 
-    print("DESFire EV1 AES Authentication and Key Change v2")
-    print("=" * 50)
-    main()
