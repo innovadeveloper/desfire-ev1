@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arquitecturas MIFARE - Comparación Interactiva</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            color: #333;
+            overflow-x: hidden;
+        }
+
+        .header {
+            text-align: center;
+            padding: 30px 20px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .comparison-container {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .card-architecture {
+            flex: 1;
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-architecture::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+        }
+
+        .card-architecture:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 25px 60px rgba(0,0,0,0.3);
+        }
+
+        .card-title {
+            text-align: center;
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 30px;
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+            position: relative;
+        }
+
+        .classic-title {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+        }
+
+        .desfire-title {
+            background: linear-gradient(135deg, #4ecdc4, #44a08d);
+        }
+
+        .architecture-layers {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .layer {
+            border-radius: 15px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .layer::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.5s;
+        }
+
+        .layer:hover::before {
+            left: 100%;
+        }
+
+        .layer:hover {
+            transform: translateX(10px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        .layer-classic-1 { background: linear-gradient(135deg, #ff9a9e, #fecfef); }
+        .layer-classic-2 { background: linear-gradient(135deg, #a8edea, #fed6e3); }
+        .layer-classic-3 { background: linear-gradient(135deg, #ffecd2, #fcb69f); }
+
+        .layer-desfire-1 { background: linear-gradient(135deg, #d299c2, #fef9d7); }
+        .layer-desfire-2 { background: linear-gradient(135deg, #89f7fe, #66a6ff); }
+        .layer-desfire-3 { background: linear-gradient(135deg, #85ffbd, #fffb7d); }
+        .layer-desfire-4 { background: linear-gradient(135deg, #a8c0ff, #3f2b96); color: white; }
+
+        .layer-title {
+            font-size: 1.4rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .layer-content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .feature-box {
+            background: rgba(255,255,255,0.7);
+            padding: 12px 18px;
+            border-radius: 8px;
+            font-weight: 500;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 2px solid transparent;
+            backdrop-filter: blur(10px);
+        }
+
+        .feature-box:hover {
+            background: rgba(255,255,255,0.9);
+            transform: scale(1.05);
+            border-color: #667eea;
+        }
+
+        .layer-desfire-4 .feature-box {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+
+        .layer-desfire-4 .feature-box:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .comparison-table {
+            margin: 40px 20px;
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+        }
+
+        .table-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .table-header h2 {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+        }
+
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0;
+        }
+
+        .grid-header {
+            background: #f8f9fa;
+            padding: 15px;
+            font-weight: bold;
+            text-align: center;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .grid-cell {
+            padding: 15px;
+            border-bottom: 1px solid #dee2e6;
+            border-right: 1px solid #dee2e6;
+            transition: background 0.3s ease;
+        }
+
+        .grid-cell:hover {
+            background: #f8f9fa;
+        }
+
+        .grid-cell:nth-child(3n) {
+            border-right: none;
+        }
+
+        .pro {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .con {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .neutral {
+            color: #6c757d;
+        }
+
+        .info-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+            animation: modalOpen 0.3s ease;
+        }
+
+        @keyframes modalOpen {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .close-btn:hover {
+            color: #333;
+        }
+
+        .toggle-view {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .toggle-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .toggle-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+
+        .specs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 20px;
+        }
+
+        .spec-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .spec-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+        }
+
+        .spec-title {
+            font-size: 1.3rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .spec-list {
+            list-style: none;
+        }
+
+        .spec-list li {
+            margin: 8px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .spec-list li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            .comparison-container {
+                flex-direction: column;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .comparison-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(102, 126, 234, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0); }
+        }
+
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏗️ Arquitecturas MIFARE</h1>
+        <p>Comparación Interactiva: Classic vs DESFire EV1</p>
+    </div>
+
+    <div class="toggle-view">
+        <button class="toggle-btn" onclick="toggleView()">
+            📊 Ver Tabla Comparativa Detallada
+        </button>
+    </div>
+
+    <div id="architecture-view" class="comparison-container">
+        <!-- MIFARE Classic Architecture -->
+        <div class="card-architecture">
+            <div class="card-title classic-title">
+                🏛️ MIFARE Classic
+            </div>
+            
+            <div class="architecture-layers">
+                <div class="layer layer-classic-1" onclick="showInfo('classic-memory')">
+                    <div class="layer-title">
+                        💾 Capa de Memoria
+                    </div>
+                    <div class="layer-content">
+                        <div class="feature-box">EEPROM 1KB/4KB</div>
+                        <div class="feature-box">Sectores</div>
+                        <div class="feature-box">Bloques de 16 bytes</div>
+                    </div>
+                </div>
+
+                <div class="layer layer-classic-2" onclick="showInfo('classic-security')">
+                    <div class="layer-title">
+                        🔐 Capa de Seguridad
+                    </div>
+                    <div class="layer-content">
+                        <div class="feature-box">Crypto-1</div>
+                        <div class="feature-box">Claves A/B</div>
+                        <div class="feature-box">Control de Acceso</div>
+                    </div>
+                </div>
+
+                <div class="layer layer-classic-3" onclick="showInfo('classic-hardware')">
+                    <div class="layer-title">
+                        ⚙️ Capa de Hardware
+                    </div>
+                    <div class="layer-content">
+                        <div class="feature-box">RF Interface</div>
+                        <div class="feature-box">ISO/IEC 14443A</div>
+                        <div class="feature-box">CPU Simple</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MIFARE DESFire EV1 Architecture -->
+        <div class="card-architecture">
+            <div class="card-title desfire-title">
+                🚀 MIFARE DESFire EV1
+            </div>
+            
+            <div class="architecture-layers">
+                <div class="layer layer-desfire-1" onclick="showInfo('desfire-application')">
+                    <div class="layer-title">
+                        📱 Capa de Aplicación
+                    </div>
+                    <div class="layer-content">
+                        <div class="feature-box">Hasta 28 Apps</div>
+                        <div class="feature-box">32 Archivos/App</div>
+                        <div class="feature-box">Múltiples Tipos</div>
+                    </div>
+                </div>
+
+                <div class="layer layer-desfire-2" onclick="showInfo('desfire-security')">
+                    <div class="layer-title">
+                        🛡️ Capa de Seguridad
+                    </div>
+                    <div class="layer-content">
+                        <div class="feature-box">Auth 3-Pass</div>
+                        <div class="feature-box">DES/3DES/AES</div>
+                        <div class="feature-box">Control Basado en Claves</div>
+                        <div class="feature-box">UID Único 7-byte</div>
+                    </div>
+                </div>
+
+                <div class="layer layer-desfire-3" onclick="showInfo('desfire-memory')">
+                    <div class="layer-title">
+                        🧠 Capa de Memoria
+                    </div>
+                    <div class="layer-content">
+                        <div class="feature-box">EEPROM 2KB/4KB/8KB</div>
+                        <div class="feature-box">RAM</div>
+                        <div class="feature-box">ROM</div>
+                    </div>
+                </div>
+
+                <div class="layer layer-desfire-4" onclick="showInfo('desfire-hardware')">
+                    <div class="layer-title">
+                        ⚡ Capa de Hardware
+                    </div>
+                    <div class="layer-content">
+                        <div class="feature-box">RF Interface</div>
+                        <div class="feature-box">Crypto Co-processor</div>
+                        <div class="feature-box">CPU Controller</div>
+                        <div class="feature-box">Security Sensors</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Comparison Table (Hidden by default) -->
+    <div id="table-view" style="display: none;">
+        <div class="comparison-table">
+            <div class="table-header">
+                <h2>📋 Comparación Detallada de Características</h2>
+                <p>Análisis completo de las diferencias técnicas</p>
+            </div>
+            
+            <div class="comparison-grid">
+                <div class="grid-header">Característica</div>
+                <div class="grid-header">MIFARE Classic</div>
+                <div class="grid-header">MIFARE DESFire EV1</div>
+                
+                <div class="grid-cell"><strong>Capacidad de Memoria</strong></div>
+                <div class="grid-cell neutral">1KB - 4KB</div>
+                <div class="grid-cell pro">2KB - 8KB</div>
+                
+                <div class="grid-cell"><strong>Algoritmo de Cifrado</strong></div>
+                <div class="grid-cell con">Crypto-1 (débil)</div>
+                <div class="grid-cell pro">DES/3DES/AES (fuerte)</div>
+                
+                <div class="grid-cell"><strong>Número de Aplicaciones</strong></div>
+                <div class="grid-cell con">1 (estructura fija)</div>
+                <div class="grid-cell pro">Hasta 28</div>
+                
+                <div class="grid-cell"><strong>Archivos por Aplicación</strong></div>
+                <div class="grid-cell neutral">N/A (sectores)</div>
+                <div class="grid-cell pro">Hasta 32</div>
+                
+                <div class="grid-cell"><strong>Tipos de Archivo</strong></div>
+                <div class="grid-cell con">Solo bloques de datos</div>
+                <div class="grid-cell pro">Standard, Backup, Value, Record</div>
+                
+                <div class="grid-cell"><strong>Autenticación</strong></div>
+                <div class="grid-cell neutral">Claves A/B por sector</div>
+                <div class="grid-cell pro">3-Pass mutual auth</div>
+                
+                <div class="grid-cell"><strong>Gestión de Claves</strong></div>
+                <div class="grid-cell con">Básica</div>
+                <div class="grid-cell pro">Avanzada (hasta 14 por app)</div>
+                
+                <div class="grid-cell"><strong>Integridad de Datos</strong></div>
+                <div class="grid-cell con">Limitada</div>
+                <div class="grid-cell pro">CMAC, CRC, Anti-tear</div>
+                
+                <div class="grid-cell"><strong>Velocidad de Comunicación</strong></div>
+                <div class="grid-cell neutral">106 kbit/s</div>
+                <div class="grid-cell pro">Hasta 848 kbit/s</div>
+                
+                <div class="grid-cell"><strong>Compatibilidad</strong></div>
+                <div class="grid-cell pro">Amplia (legacy)</div>
+                <div class="grid-cell neutral">Sistemas modernos</div>
+                
+                <div class="grid-cell"><strong>Costo</strong></div>
+                <div class="grid-cell pro">Bajo</div>
+                <div class="grid-cell con">Mayor</div>
+                
+                <div class="grid-cell"><strong>Nivel de Seguridad</strong></div>
+                <div class="grid-cell con">Básico (vulnerabilidades conocidas)</div>
+                <div class="grid-cell pro">Alto (EAL4+ certificado)</div>
+            </div>
+        </div>
+
+        <!-- Specifications Cards -->
+        <div class="specs-grid">
+            <div class="spec-card">
+                <div class="spec-title">🏛️ MIFARE Classic - Casos de Uso</div>
+                <ul class="spec-list">
+                    <li>Control de acceso básico</li>
+                    <li>Sistemas de transporte público legacy</li>
+                    <li>Aplicaciones de bajo costo</li>
+                    <li>Compatibilidad con sistemas existentes</li>
+                    <li>Proyectos con presupuesto limitado</li>
+                </ul>
+            </div>
+            
+            <div class="spec-card">
+                <div class="spec-title">🚀 DESFire EV1 - Casos de Uso</div>
+                <ul class="spec-list">
+                    <li>Sistemas de pago seguros</li>
+                    <li>Control de acceso empresarial</li>
+                    <li>Aplicaciones multi-propósito</li>
+                    <li>Transporte público moderno</li>
+                    <li>Identificación gubernamental</li>
+                </ul>
+            </div>
+
+            <div class="spec-card">
+                <div class="spec-title">⚠️ Consideraciones de Seguridad</div>
+                <ul class="spec-list">
+                    <li>Classic: Crypto-1 comprometido</li>
+                    <li>DESFire: Certificación EAL4+</li>
+                    <li>Classic: Vulnerabilidades conocidas</li>
+                    <li>DESFire: Resistente a ataques</li>
+                    <li>Migración recomendada a DESFire</li>
+                </ul>
+            </div>
+
+            <div class="spec-card">
+                <div class="spec-title">💰 Análisis Costo-Beneficio</div>
+                <ul class="spec-list">
+                    <li>Classic: Menor costo inicial</li>
+                    <li>DESFire: Mayor inversión inicial</li>
+                    <li>Classic: Riesgos de seguridad</li>
+                    <li>DESFire: ROI a largo plazo</li>
+                    <li>Considerar ciclo de vida completo</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Modal -->
+    <div id="info-modal" class="info-modal" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <button class="close-btn" onclick="closeModal()">&times;</button>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentView = 'architecture';
+
+        function toggleView() {
+            const architectureView = document.getElementById('architecture-view');
+            const tableView = document.getElementById('table-view');
+            const toggleBtn = document.querySelector('.toggle-btn');
+
+            if (currentView === 'architecture') {
+                architectureView.style.display = 'none';
+                tableView.style.display = 'block';
+                toggleBtn.innerHTML = '🏗️ Ver Arquitecturas';
+                currentView = 'table';
+            } else {
+                architectureView.style.display = 'flex';
+                tableView.style.display = 'none';
+                toggleBtn.innerHTML = '📊 Ver Tabla Comparativa Detallada';
+                currentView = 'architecture';
+            }
+        }
+
+        function showInfo(topic) {
+            const modal = document.getElementById('info-modal');
+            const content = document.getElementById('modal-content');
+            
+            const infoContent = {
+                'classic-memory': {
+                    title: '💾 MIFARE Classic - Estructura de Memoria',
+                    content: `
+                        <h3>Organización de la Memoria</h3>
+                        <ul>
+                            <li><strong>MIFARE Classic 1K:</strong> 1024 bytes divididos en 16 sectores</li>
+                            <li><strong>MIFARE Classic 4K:</strong> 4096 bytes con sectores variables</li>
+                            <li><strong>Estructura:</strong> Cada sector tiene 4 bloques de 16 bytes</li>
+                            <li><strong>Bloque de Control:</strong> Último bloque de cada sector</li>
+                            <li><strong>Limitaciones:</strong> Estructura rígida, sin flexibilidad</li>
+                        </ul>
+                        <p><strong>Nota:</strong> La estructura fija limita la versatilidad para aplicaciones modernas.</p>
+                    `
+                },
+                'classic-security': {
+                    title: '🔐 MIFARE Classic - Seguridad',
+                    content: `
+                        <h3>Sistema de Seguridad</h3>
+                        <ul>
+                            <li><strong>Algoritmo:</strong> Crypto-1 (48 bits)</li>
+                            <li><strong>Claves:</strong> Clave A y Clave B por sector</li>
+                            <li><strong>Control de Acceso:</strong> 4 bytes por sector</li>
+                            <li><strong>Vulnerabilidades:</strong> Crypto-1 comprometido desde 2008</li>
+                            <li><strong>Ataques conocidos:</strong> Darkside, Nested, Hardnested</li>
+                        </ul>
+                        <p><strong>⚠️ Advertencia:</strong> No recomendado para aplicaciones que requieren alta seguridad.</p>
+                    `
+                },
+                'classic-hardware': {
+                    title: '⚙️ MIFARE Classic - Hardware',
+                    content: `
+                        <h3>Componentes de Hardware</h3>
+                        <ul>
+                            <li><strong>RF Interface:</strong> ISO/IEC 14443 Type A</li>
+                            <li><strong>Frecuencia:</strong> 13.56 MHz</li>
+                            <li><strong>Velocidad:</strong> 106 kbit/s</li>
+                            <li><strong>Rango:</strong> Hasta 10 cm</li>
+                            <li><strong>CPU:</strong> Procesador simple de 8 bits</li>
+                        </ul>
+                        <p><strong>Características:</strong> Hardware optimizado para costo, funcionalidad básica.</p>
+                    `
+                },
+                'desfire-application': {
+                    title: '📱 DESFire EV1 - Capa de Aplicación',
+                    content: `
+                        <h3>Sistema Multi-Aplicación</h3>
+                        <ul>
+                            <li><strong>Aplicaciones:</strong> Hasta 28 aplicaciones independientes</li>
+                            <li><strong>Archivos:</strong> Hasta 32 archivos por aplicación</li>
+                            <li><strong>Tipos de Archivo:</strong>
+                                <ul>
+                                    <li>Standard Data File</li>
+                                    <li>Backup Data File</li>
+                                    <li>Value File (32-bit integer)</li>
+                                    <li>Linear Record File</li>
+                                    <li>Cyclic Record File</li>
+                                </ul>
+                            </li>
+                            <li><strong>Flexibilidad:</strong> Tamaño de archivo definible</li>
+                        </ul>
+                        <p><strong>Ventaja:</strong> Una sola tarjeta puede servir múltiples propósitos.</p>
+                    `
+                },
+                'desfire-security': {
+                    title: '🛡️ DESFire EV1 - Seguridad Avanzada',
+                    content: `
+                        <h3>Sistema de Seguridad Robusto</h3>
+                        <ul>
+                            <li><strong>Algoritmos:</strong> DES, 3DES, AES-128</li>
+                            <li><strong>Autenticación:</strong> 3-Pass mutual authentication</li>
+                            <li><strong>Claves:</strong> Hasta 14 claves por aplicación</li>
+                            <li><strong>Control de Acceso:</strong> Granular por archivo y operación</li>
+                            <li><strong>Integridad:</strong> CMAC, CRC-32</li>
+                            <li><strong>Certificación:</strong> Common Criteria EAL4+</li>
+                            <li><strong>Anti-tear:</strong> Protección contra pérdida de energía</li>
+                        </ul>
+                        <p><strong>🏆 Nivel militar:</strong> Seguridad comparable a estándares gubernamentales.</p>
+                    `
+                },
+                'desfire-memory': {
+                    title: '🧠 DESFire EV1 - Gestión de Memoria',
+                    content: `
+                        <h3>Arquitectura de Memoria Avanzada</h3>
+                        <ul>
+                            <li><strong>EEPROM:</strong> 2KB, 4KB o 8KB no volátil</li>
+                            <li><strong>RAM:</strong> Memoria de trabajo para operaciones</li>
+                            <li><strong>ROM:</strong> Sistema operativo embebido</li>
+                            <li><strong>Gestión:</strong> Asignación dinámica de espacio</li>
+                            <li><strong>Backup:</strong> Sistema automático de respaldo</li>
+                            <li><strong>Transacciones:</strong> Commit/Rollback automático</li>
+                        </ul>
+                        <p><strong>Ventaja:</strong> Gestión inteligente del espacio y integridad garantizada.</p>
+                    `
+                },
+                'desfire-hardware': {
+                    title: '⚡ DESFire EV1 - Hardware de Última Generación',
+                    content: `
+                        <h3>Componentes Avanzados</h3>
+                        <ul>
+                            <li><strong>RF Interface:</strong> ISO/IEC 14443 Type A compliant</li>
+                            <li><strong>Velocidades:</strong> 106, 212, 424, 848 kbit/s</li>
+                            <li><strong>Crypto Co-processor:</strong> Hardware dedicado para cifrado</li>
+                            <li><strong>CPU Controller:</strong> Procesador de 32 bits</li>
+                            <li><strong>Security Sensors:</strong> Detección de ataques físicos

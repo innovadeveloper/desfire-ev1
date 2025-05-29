@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DESFire CREATE STD DATA FILE</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .command-structure {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .byte-structure {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 20px 0;
+            justify-content: center;
+        }
+        
+        .byte-box {
+            background: #3498db;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            min-width: 80px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .byte-box:hover {
+            transform: translateY(-5px);
+        }
+        
+        .byte-box.command { background: #e74c3c; }
+        .byte-box.file-id { background: #f39c12; }
+        .byte-box.comms { background: #9b59b6; }
+        .byte-box.access { background: #27ae60; }
+        .byte-box.size { background: #34495e; }
+        
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            border-left: 4px solid #3498db;
+            background: #f8f9fa;
+            border-radius: 0 10px 10px 0;
+        }
+        
+        .section h3 {
+            color: #2c3e50;
+            margin-top: 0;
+        }
+        
+        .access-rights-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .access-rights-table th,
+        .access-rights-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: center;
+        }
+        
+        .access-rights-table th {
+            background: #3498db;
+            color: white;
+        }
+        
+        .access-rights-table tr:nth-child(even) {
+            background: #f2f2f2;
+        }
+        
+        .code-example {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            margin: 20px 0;
+            overflow-x: auto;
+        }
+        
+        .highlight {
+            background: #f1c40f;
+            padding: 2px 5px;
+            border-radius: 3px;
+            color: #2c3e50;
+            font-weight: bold;
+        }
+        
+        .warning {
+            background: #ffe6e6;
+            border: 1px solid #ff9999;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        
+        .warning strong {
+            color: #d32f2f;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 CREATE STD DATA FILE (0xCD)</h1>
+        
+        <div class="command-structure">
+            <h3>Estructura del Comando:</h3>
+            <div class="byte-structure">
+                <div class="byte-box command">
+                    <strong>0xCD</strong><br>
+                    <small>Comando</small>
+                </div>
+                <div class="byte-box file-id">
+                    <strong>File ID</strong><br>
+                    <small>1 byte</small>
+                </div>
+                <div class="byte-box comms">
+                    <strong>Comm Mode</strong><br>
+                    <small>1 byte</small>
+                </div>
+                <div class="byte-box access">
+                    <strong>Access Rights</strong><br>
+                    <small>2 bytes</small>
+                </div>
+                <div class="byte-box size">
+                    <strong>File Size</strong><br>
+                    <small>3 bytes</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>📁 File ID (1 byte)</h3>
+            <p>Identificador único del archivo dentro de la aplicación actual.</p>
+            <ul>
+                <li><strong>Rango:</strong> 0x00 - 0x1F (0-31)</li>
+                <li><strong>Nota:</strong> Cada aplicación puede tener hasta 32 archivos</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h3>🔐 Communication Mode (1 byte)</h3>
+            <table class="access-rights-table">
+                <tr>
+                    <th>Valor</th>
+                    <th>Modo</th>
+                    <th>Descripción</th>
+                    <th>Seguridad</th>
+                </tr>
+                <tr>
+                    <td><span class="highlight">0x00</span></td>
+                    <td>Plain</td>
+                    <td>Comunicación sin cifrado</td>
+                    <td>⚠️ Baja</td>
+                </tr>
+                <tr>
+                    <td><span class="highlight">0x01</span></td>
+                    <td>MAC</td>
+                    <td>Plain + Código de autenticación</td>
+                    <td>🔸 Media</td>
+                </tr>
+                <tr>
+                    <td><span class="highlight">0x03</span></td>
+                    <td>Encrypted</td>
+                    <td>Comunicación completamente cifrada</td>
+                    <td>🔒 Alta (Recomendado)</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h3>🗝️ Access Rights (2 bytes = 16 bits)</h3>
+            <p>Los derechos de acceso se dividen en 4 campos de 4 bits cada uno:</p>
+            
+            <div class="byte-structure">
+                <div class="byte-box access">
+                    <strong>Read</strong><br>
+                    <small>Bits 15-12</small>
+                </div>
+                <div class="byte-box access">
+                    <strong>Write</strong><br>
+                    <small>Bits 11-8</small>
+                </div>
+                <div class="byte-box access">
+                    <strong>Read&Write</strong><br>
+                    <small>Bits 7-4</small>
+                </div>
+                <div class="byte-box access">
+                    <strong>Change Rights</strong><br>
+                    <small>Bits 3-0</small>
+                </div>
+            </div>
+
+            <h4>Valores posibles para cada campo (4 bits):</h4>
+            <table class="access-rights-table">
+                <tr>
+                    <th>Valor</th>
+                    <th>Significado</th>
+                    <th>Descripción</th>
+                </tr>
+                <tr>
+                    <td><span class="highlight">0x0 - 0xD</span></td>
+                    <td>Key Number</td>
+                    <td>Requiere autenticación con la clave especificada (0-13)</td>
+                </tr>
+                <tr>
+                    <td><span class="highlight">0xE</span></td>
+                    <td>Free Access</td>
+                    <td>Acceso libre sin autenticación</td>
+                </tr>
+                <tr>
+                    <td><span class="highlight">0xF</span></td>
+                    <td>Deny Access</td>
+                    <td>Acceso denegado siempre</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h3>📏 File Size (3 bytes)</h3>
+            <p>Tamaño del archivo en bytes (little-endian).</p>
+            <ul>
+                <li><strong>Rango:</strong> 1 - 16,777,215 bytes (0x000001 - 0xFFFFFF)</li>
+                <li><strong>Formato:</strong> Little-endian (byte menos significativo primero)</li>
+                <li><strong>Nota:</strong> DESFire asigna memoria en múltiplos de 32 bytes</li>
+            </ul>
+        </div>
+
+        <div class="warning">
+            <strong>⚠️ Importante:</strong> La memoria NV se asigna en bloques de 32 bytes. Un archivo de 1 byte consumirá la misma memoria que uno de 32 bytes.
+        </div>
+
+        <div class="section">
+            <h3>📋 Ejemplos de Configuración</h3>
+            
+            <h4>Ejemplo 1: Archivo público de lectura/escritura</h4>
+            <div class="code-example">
+CD 05 00 EEEE 00100000
+│  │  │  │    │
+│  │  │  │    └─ File Size: 4096 bytes (0x001000)
+│  │  │  └───── Access Rights: Read=0xE, Write=0xE, R&W=0xE, Change=0xE
+│  │  └──────── Comm Mode: Plain (0x00)
+│  └─────────── File ID: 5
+└────────────── Command: CREATE STD DATA FILE
+            </div>
+
+            <h4>Ejemplo 2: Archivo seguro con AES</h4>
+            <div class="code-example">
+CD 01 03 0011 00800000
+│  │  │  │    │
+│  │  │  │    └─ File Size: 128 bytes (0x000080)
+│  │  │  └───── Access Rights: Read=Key0, Write=Key0, R&W=Key1, Change=Key1
+│  │  └──────── Comm Mode: Encrypted (0x03)
+│  └─────────── File ID: 1
+└────────────── Command: CREATE STD DATA FILE
+            </div>
+
+            <h4>Ejemplo 3: Archivo de solo lectura</h4>
+            <div class="code-example">
+CD 02 01 0F01 40000000
+│  │  │  │    │
+│  │  │  │    └─ File Size: 64 bytes (0x000040)
+│  │  │  └───── Access Rights: Read=Key0, Write=Deny, R&W=Key0, Change=Key1
+│  │  └──────── Comm Mode: MAC (0x01)
+│  └─────────── File ID: 2
+└────────────── Command: CREATE STD DATA FILE
+            </div>
+        </div>
+    </div>
+</body>
+</html>

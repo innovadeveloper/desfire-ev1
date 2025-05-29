@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Algoritmos de Cifrado MIFARE</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        .main-title {
+            font-size: 3em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .subtitle {
+            font-size: 1.3em;
+            opacity: 0.9;
+        }
+        .navigation {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        .nav-btn {
+            background: rgba(255,255,255,0.2);
+            border: 2px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            font-weight: 500;
+        }
+        .nav-btn:hover, .nav-btn.active {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .content-panel {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            margin-bottom: 30px;
+            min-height: 600px;
+            display: none;
+        }
+        .content-panel.active {
+            display: block;
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .panel-title {
+            font-size: 2.5em;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            text-align: center;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+        }
+        .algorithm-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+        .algorithm-card {
+            background: linear-gradient(145deg, #f8f9fa, #e9ecef);
+            border-radius: 15px;
+            padding: 25px;
+            border: 1px solid #dee2e6;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .algorithm-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+        }
+        .algorithm-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #3498db, #2ecc71);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .algorithm-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-right: 15px;
+        }
+        .mifare-classic { background: #ff6b6b; }
+        .mifare-desfire { background: #4ecdc4; }
+        .mifare-plus { background: #45b7d1; }
+        .mifare-ultralight { background: #96ceb4; }
+        .algorithm-name {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .algorithm-tech {
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        .key-info {
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .key-length {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        .security-level {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .security-bar {
+            flex: 1;
+            height: 8px;
+            background: #ecf0f1;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .security-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        .security-low { background: #e74c3c; }
+        .security-medium { background: #f39c12; }
+        .security-high { background: #27ae60; }
+        .security-very-high { background: #2ecc71; }
+        .pros-cons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .pros, .cons {
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .pros {
+            background: #d5f4e6;
+            border-left: 4px solid #27ae60;
+        }
+        .cons {
+            background: #ffeaa7;
+            border-left: 4px solid #f39c12;
+        }
+        .pros h4, .cons h4 {
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .pros h4 { color: #27ae60; }
+        .cons h4 { color: #f39c12; }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            margin: 5px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+        .feature-list li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .cons .feature-list li::before {
+            content: '⚠';
+            color: #f39c12;
+        }
+        .comparison-table {
+            overflow-x: auto;
+            margin-top: 30px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        th, td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        th {
+            background: #34495e;
+            color: white;
+            font-weight: bold;
+        }
+        tr:hover {
+            background: #f8f9fa;
+        }
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .deprecated { background: #e74c3c; color: white; }
+        .legacy { background: #f39c12; color: white; }
+        .current { background: #27ae60; color: white; }
+        .modern { background: #3498db; color: white; }
+        .timeline {
+            position: relative;
+            margin: 40px 0;
+        }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #3498db;
+            transform: translateX(-50%);
+        }
+        .timeline-item {
+            display: flex;
+            align-items: center;
+            margin: 30px 0;
+            position: relative;
+        }
+        .timeline-item:nth-child(odd) {
+            flex-direction: row-reverse;
+        }
+        .timeline-content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            width: 45%;
+            margin: 0 5%;
+        }
+        .timeline-year {
+            background: #3498db;
+            color: white;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        .vulnerability-alert {
+            background: #ffe6e6;
+            border: 2px solid #ff4757;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .vulnerability-title {
+            color: #ff4757;
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        .recommendation-box {
+            background: #e8f8f5;
+            border: 2px solid #00d2d3;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .recommendation-title {
+            color: #00917c;
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        @media (max-width: 768px) {
+            .algorithm-grid {
+                grid-template-columns: 1fr;
+            }
+            .pros-cons {
+                grid-template-columns: 1fr;
+            }
+            .timeline::before {
+                left: 20px;
+            }
+            .timeline-item {
+                flex-direction: row !important;
+            }
+            .timeline-content {
+                width: calc(100% - 100px);
+                margin-left: 100px;
+            }
+            .timeline-year {
+                left: 20px;
+                transform: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="main-title">🔐 Algoritmos de Cifrado MIFARE</h1>
+            <p class="subtitle">Análisis completo de seguridad en tecnologías NFC</p>
+        </div>
+
+        <div class="navigation">
+            <button class="nav-btn active" onclick="showPanel('overview')">📊 Resumen General</button>
+            <button class="nav-btn" onclick="showPanel('algorithms')">🔒 Algoritmos</button>
+            <button class="nav-btn" onclick="showPanel('comparison')">⚖️ Comparación</button>
+            <button class="nav-btn" onclick="showPanel('timeline')">📅 Evolución</button>
+            <button class="nav-btn" onclick="showPanel('security')">🛡️ Seguridad Actual</button>
+        </div>
+
+        <!-- Panel de Resumen General -->
+        <div id="overview" class="content-panel active">
+            <h2 class="panel-title">📊 Resumen General de MIFARE</h2>
+            
+            <div class="algorithm-grid">
+                <div class="algorithm-card">
+                    <div class="card-header">
+                        <div class="algorithm-icon mifare-classic">🏗️</div>
+                        <div>
+                            <div class="algorithm-name">MIFARE Classic</div>
+                            <div class="algorithm-tech">Crypto-1 (Propietario)</div>
+                        </div>
+                    </div>
+                    <div class="key-info">
+                        <div class="key-length">Clave: 48 bits</div>
+                        <div class="security-level">
+                            <span>Seguridad:</span>
+                            <div class="security-bar">
+                                <div class="security-fill security-low" style="width: 15%;"></div>
+                            </div>
+                            <span>Muy Baja</span>
+                        </div>
+                    </div>
+                    <div class="status-badge deprecated">Deprecado</div>
+                    <p><strong>Uso típico:</strong> Transporte público antiguo, sistemas legacy</p>
+                </div>
+
+                <div class="algorithm-card">
+                    <div class="card-header">
+                        <div class="algorithm-icon mifare-desfire">🔒</div>
+                        <div>
+                            <div class="algorithm-name">MIFARE DESFire</div>
+                            <div class="algorithm-tech">DES/3DES/AES</div>
+                        </div>
+                    </div>
+                    <div class="key-info">
+                        <div class="key-length">DES: 56 bits | 3DES: 112/168 bits | AES: 128 bits</div>
+                        <div class="security-level">
+                            <span>Seguridad:</span>
+                            <div class="security-bar">
+                                <div class="security-fill security-high" style="width: 85%;"></div>
+                            </div>
+                            <span>Alta</span>
+                        </div>
+                    </div>
+                    <div class="status-badge current">Actual</div>
+                    <p><strong>Uso típico:</strong> Pagos, acceso seguro, aplicaciones críticas</p>
+                </div>
+
+                <div class="algorithm-card">
+                    <div class="card-header">
+                        <div class="algorithm-icon mifare-plus">⚡</div>
+                        <div>
+                            <div class="algorithm-name">MIFARE Plus</div>
+                            <div class="algorithm-tech">AES-128</div>
+                        </div>
+                    </div>
+                    <div class="key-info">
+                        <div class="key-length">Clave: 128 bits</div>
+                        <div class="security-level">
+                            <span>Seguridad:</span>
+                            <div class="security-bar">
+                                <div class="security-fill security-very-high" style="width: 95%;"></div>
+                            </div>
+                            <span>Muy Alta</span>
+                        </div>
+                    </div>
+                    <div class="status-badge modern">Moderno</div>
+                    <p><strong>Uso típico:</strong> Migración desde Classic, alta seguridad</p>
+                </div>
+
+                <div class="algorithm-card">
+                    <div class="card-header">
+                        <div class="algorithm-icon mifare-ultralight">🪶</div>
+                        <div>
+                            <div class="algorithm-name">MIFARE Ultralight</div>
+                            <div class="algorithm-tech">Sin cifrado / 3DES</div>
+                        </div>
+                    </div>
+                    <div class="key-info">
+                        <div class="key-length">Sin clave / 3DES: 112 bits</div>
+                        <div class="security-level">
+                            <span>Seguridad:</span>
+                            <div class="security-bar">
+                                <div class="security-fill security-medium" style="width: 40%;"></div>
+                            </div>
+                            <span>Variable</span>
+                        </div>
+                    </div>
+                    <div class="status-badge legacy">Específico</div>
+                    <p><strong>Uso típico:</strong> Tickets desechables, aplicaciones de bajo costo</p>
+                </div>
+            </div>
+
+            <div class="recommendation-box">
+                <div class="recommendation-title">💡 Recomendación Actual (2024)</div>
+                <p><strong>Para nuevos proyectos:</strong> MIFARE DESFire EV3 con AES-128 o MIFARE Plus EV2</p>
+                <p><strong>Para sistemas existentes:</strong> Migrar desde Classic lo antes posible</p>
+                <p><strong>Para aplicaciones críticas:</strong> Considerar certificación Common Criteria EAL4+</p>
+            </div>
+        </div>
+
+        <!-- Panel de Algoritmos -->
+        <div id="algorithms" class="content-panel">
+            <h2 class="panel-title">🔒 Análisis Detallado de Algoritmos</h2>
+            
+            <div class="algorithm-grid">
+                <div class="algorithm-card">
+                    <div class="card-header">
+                        <div class="algorithm-icon mifare-classic">🏗️</div>
+                        <div>
+                            <div class="algorithm-name">Crypto-1</div>
+                            <div class="algorithm-tech">MIFARE Classic</div>
+                        </div>
+                    </div>
+                    
+                    <div class="key-info">
+                        <div class="key-length">📏 Longitud de clave: 48 bits</div>
+                        <div><strong>Tipo:</strong> Cifrado de flujo (stream cipher) propietario</div>
+                        <div><strong>Año:</strong> 1994</div>
+                    </div>
+
+                    <div class="vulnerability-alert">
+                        <div class="vulnerability-title">🚨 Vulnerabilidades Críticas</div>
+                        <ul>
+                            <li>Clave de solo 48 bits (fuerza bruta en minutos)</li>
+                            <li>Algoritmo propietario con debilidades conocidas</li>
+                            <li>Ataques de correlación temporal</li>
+                            <li>Clonación de tarjetas posible</li>
+                        </ul>
+                    </div>
+
+                    <div class="pros-cons">
+                        <div class="pros">
+                            <h4>✅ Ventajas</h4>
+                            <ul class="feature-list">
+                                <li>Bajo costo de implementación</li>
+                                <li>Amplia compatibilidad legacy</li>
+                                <li>Procesamiento rápido</li>
+                                <li>Bajo consumo energético</li>
+                            </ul>
+                        </div>
+                        <div class="cons">
+                            <h4>⚠️ Desventajas</h4>
+                            <ul class="feature-list">
+                                <li>Seguridad comprometida</li>
+                                <li>Vulnerable a ataques conocidos</li>
+                                <li>No cumple estándares actuales</li>
+                                <li>Prohibido en aplicaciones críticas</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="algorithm-card">
+                    <div class="card-header">
+                        <div class="algorithm-icon mifare-desfire">🔒</div>
+                        <div>
+                            <div class="algorithm-name">DES/3DES</div>
+                            <div class="algorithm-tech">MIFARE DESFire</div>
+                        </div>
+                    </div>
+                    
+                    <div class="key-info">
+                        <div class="key-length">📏 DES: 56 bits | 3DES: 112/168 bits</div>
+                        <div><strong>Tipo:</strong> Cifrado de bloque estándar</div>
+                        <div><strong>Año:</strong> DES (1977) | 3DES (1998)</div>
+                    </div>
+
+                    <div class="pros-cons">
+                        <div class="pros">
+                            <h4>✅ Ventajas</h4>
+                            <ul class="feature-list">
+                                <li>Estándar probado y auditado</li>
+                                <li>Amplio soporte en hardware</li>
+                                <li>3DES aún considerado seguro</li>
+                                <li>Compatibilidad con sistemas legacy</li>
+                            </ul>
+                        </div>
+                        <div class="cons">
+                            <h4>⚠️ Desventajas</h4>
+                            <ul class="feature-list">
+                                <li>DES simple ya no es seguro</li>
+                                <li>3DES más lento que AES</li>
+                                <li>NIST recomienda migrar a AES</li>
+                                <li>Vulnerable a ataques de cumpleaños</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="algorithm-card">
+                    <div class="card-header">
+                        <div class="algorithm-icon mifare-desfire">🛡️</div>
+                        <div>
+                            <div class="algorithm-name">AES-128</div>
+                            <div class="algorithm-tech">MIFARE DESFire/Plus</div>
+                        </div>
+                    </div>
+                    
+                    <div class="key-info">
+                        <div class="key-length">📏 Longitud de clave: 128 bits</div>
+                        <div><strong>Tipo:</strong> Cifrado de bloque estándar</div>
+                        <div><strong>Año:</strong> 2001 (adoptado por NIST)</div>
+                    </div>
+
+                    <div class="pros-cons">
+                        <div class="pros">
+                            <h4>✅ Ventajas</h4>
+                            <ul class="feature-list">
+                                <li>Estándar de cifrado actual</li>
+                                <li>Excelente rendimiento</li>
+                                <li>Ampliamente auditado</li>
+                                <li>Soporte de hardware acelerado</li>
+                                <li>Resistente a ataques cuánticos actuales</li>
+                            </ul>
+                        </div>
+                        <div class="cons">
+                            <h4>⚠️ Consideraciones</h4>
+                            <ul class="feature-list">
+                                <li>Requiere implementación correcta</li>
+                                <li>Gestión de claves crítica</li>
+                                <li>Posible vulnerabilidad futura a computación cuántica</li>
+                                <li>Mayor complejidad que algoritmos simples</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="algorithm-card">
+                    <div class="card-header">
+                        <div class="algorithm-icon mifare-ultralight">⚡</div>
+                        <div>
+                            <div class="algorithm-name">Sin cifrado / Autenticación simple</div>
+                            <div class="algorithm-tech">MIFARE Ultralight</div>
+                        </div>
+                    </div>
+                    
+                    <div class="key-info">
+                        <div class="key-length">📏 Sin clave o 3DES opcional</div>
+                        <div><strong>Tipo:</strong> Sin cifrado o autenticación básica</div>
+                        <div><strong>Uso:</strong> Aplicaciones de bajo costo</div>
+                    </div>
+
+                    <div class="pros-cons">
+                        <div class="pros">
+                            <h4>✅ Ventajas</h4>
+                            <ul class="feature-list">
+                                <li>Muy bajo costo</li>
+                                <li>Simplicidad extrema</li>
+                                <li>Rápido procesamiento</li>
+                                <li>Ideal para tickets desechables</li>
+                            </ul>
+                        </div>
+                        <div class="cons">
+                            <h4>⚠️ Limitaciones</h4>
+                            <ul class="feature-list">
+                                <li>Sin cifrado en versiones básicas</li>
+                                <li>Fácil clonación</li>
+                                <li>Solo para datos no sensibles</li>
+                                <li>Protección mínima</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel de Comparación -->
+        <div id="comparison" class="content-panel">
+            <h2 class="panel-title">⚖️ Comparación Técnica</h2>
+            
+            <div class="comparison-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tecnología</th>
+                            <th>Algoritmo</th>
+                            <th>Longitud de Clave</th>
+                            <th>Seguridad</th>
+                            <th>Rendimiento</th>
+                            <th>Costo</th>
+                            <th>Estado Actual</th>
+                            <th>Recomendación</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>MIFARE Classic</strong></td>
+                            <td>Crypto-1</td>
+                            <td>48 bits</td>
+                            <td><span class="status-badge deprecated">Muy Baja</span></td>
+                            <td>Excelente</td>
+                            <td>Muy Bajo</td>
+                            <td><span class="status-badge deprecated">Deprecado</span></td>
+                            <td>❌ No usar</td>
+                        </tr>
+                        <tr>
+                            <td><strong>DESFire EV1 (DES)</strong></td>
+                            <td>DES</td>
+                            <td>56 bits</td>
+                            <td><span class="status-badge legacy">Baja</span></td>
+                            <td>Bueno</td>
+                            <td>Bajo</td>
+                            <td><span class="status-badge legacy">Legacy</span></td>
+                            <td>⚠️ Migrar</td>
+                        </tr>
+                        <tr>
+                            <td><strong>DESFire EV1 (3DES)</strong></td>
+                            <td>3DES</td>
+                            <td>112/168 bits</td>
+                            <td><span class="status-badge current">Media-Alta</span></td>
+                            <td>Bueno</td>
+                            <td>Medio</td>
+                            <td><span class="status-badge current">Aceptable</span></td>
+                            <td>✅ Temporal</td>
+                        </tr>
+                        <tr>
+                            <td><strong>DESFire EV1/EV2 (AES)</strong></td>
+                            <td>AES-128</td>
+                            <td>128 bits</td>
+                            <td><span class="status-badge current">Alta</span></td>
+                            <td>Excelente</td>
+                            <td>Medio</td>
+                            <td><span class="status-badge current">Recomendado</span></td>
+                            <td>✅ Usar</td>
+                        </tr>
+                        <tr>
+                            <td><strong>MIFARE Plus EV1</strong></td>
+                            <td>AES-128</td>
+                            <td>128 bits</td>
+                            <td><span class="status-badge current">Alta</span></td>
+                            <td>Excelente</td>
+                            <td>Medio</td>
+                            <td><span class="status-badge current">Recomendado</span></td>
+                            <td>✅ Usar</td>
+                        </tr>
+                        <tr>
+                            <td><strong>DESFire EV3</strong></td>
+                            <td>AES-128</td>
+                            <td>128 bits</td>
+                            <td><span class="status-badge modern">Muy Alta</span></td>
+                            <td>Excelente</td>
+                            <td>Alto</td>
+                            <td><span class="status-badge modern">Último</span></td>
+                            <td>✅ Preferido</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Ultralight</strong></td>
+                            <td>Ninguno/3DES</td>
+                            <td>-/112 bits</td>
+                            <td><span class="status-badge legacy">Variable</span></td>
+                            <td>Excelente</td>
+                            <td>Muy Bajo</td>
+                            <td><span class="status-badge legacy">Específico</span></td>
+                            <td>🔄 Casos específicos</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="recommendation-box">
+                <div class="recommendation-title">📋 Matriz de Decisión</div>
+                <div class="algorithm-grid">
+                    <div class="algorithm-card">
+                        <h3>🏢 Aplicaciones Empresariales</h3>
+                        <p><strong>Recomendado:</strong> MIFARE DESFire EV3 con AES-128</p>
+                        <p><strong>Razones:</strong> Máxima seguridad, certificación EAL4+, soporte multi-aplicación</p>
+                    </div>
+                    <div class="algorithm-card">
+                        <h3>🚇 Transporte Público</h3>
+                        <p><strong>Recomendado:</strong> MIFARE Plus EV2 o DESFire EV2</p>
+                        <p><strong>Razones:</strong> Balance costo-seguridad, compatibilidad con infraestructura existente</p>
+                    </div>
+                    <div class="algorithm-card">
+                        <h3>🎫 Tickets Desechables</h3>
+                        <p><strong>Recomendado:</strong> MIFARE Ultralight C</p>
+                        <p><strong>Razones:</strong> Bajo costo, seguridad suficiente para uso temporal</p>
+                    </div>
+                    <div class="algorithm-card">
+                        <h3>🔐 Acceso Físico Crítico</h3>
+                        <p><strong>Recomendado:</strong> MIFARE DESFire EV3 + certificación adicional</p>
+                        <p><strong>Razones:</strong> Máxima seguridad, auditabilidad, resistencia a ataques avanzados</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel de Timeline -->
+        <div id="timeline" class="content-panel">
+            <h2 class="panel-title">📅 Evolución de la Seguridad MIFARE</h2>
+            
+            <div class="timeline">
+                <div class="timeline-item">
+                    <div class="timeline-year">1994</div>
+                    <div class="timeline-content">
+                        <h3>🏗️ MIFARE Classic - Crypto-1</h3>
+                        <p><strong>Innovación:</strong> Primera implementación masiva de NFC con cifrado</p>
+                        <p><strong>Debilidad:</strong> Algoritmo propietario, clave de solo 48 bits</p>
+                        <p><strong>Impacto:</strong> Revolucionó el transporte público mundial</p>
+                    </div>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-year">2008</div>
+                    <div class="timeline-content">
+                        <h3>🚨 Crisis de Seguridad</h3>
+                        <p><strong>Evento:</strong> Crypto-1 completamente comprometido</p>
+                        <p><strong>Ataques:</strong> Chameleon, Darkside, Nested</p>
+                        <p><strong>Consecuencia:</strong> Clonación masiva de tarjetas Classic</p>
+                    </div>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-year">2006</div>
+                    <div class="timeline-content">
+                        <h3>🔒 MIFARE DESFire - Revolución</h3>
+                        <p><strong>Innovación:</strong> Uso de algoritmos estándar (DES/3DES)</p>
+                        <p><strong>Seguridad:</strong> Autenticación mutua, cifrado de comunicaciones</p>
+                        <p><strong>Aplicaciones:</strong> Sistemas de pago, acceso seguro</p>
+                    </div>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-year">2010</div>
+                    <div class="timeline-content">
+                        <h3>⚡ MIFARE Plus - Migración</h3>
+                        <p><strong>Objetivo:</strong> Migración desde Classic con compatibilidad</p>
+                        <p><strong>Tecnología:</strong> AES-128 con modo de compatibilidad</p>
+                        <p><strong>Ventaja:</strong> Upgrade sin cambiar infraestructura</p>
+                    </div>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-year">2013</div>
+                    <div class="timeline-content">
+                        <h3>🛡️ DESFire EV1 - AES Nativo</h3>
+                        <p><strong>Avance:</strong> AES-128 como algoritmo principal</p>
+                        <p><strong>Certificación:</strong> Common Criteria EAL4+</p>
+                        <p><strong>Características:</strong> Múltiples aplicaciones, manejo avanzado de claves</p>
+                    </div>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-year">2018</div>
+                    <div class="timeline-content">
+                        <h3>🚀 DESFire EV2 - Optimización</h3>
+                        <p><strong>Mejoras:</strong> Rendimiento optimizado, mayor memoria</p>
+                        <p><strong>Seguridad:</strong> Protecciones adicionales contra side-channel</p>
+                        <p><strong>APIs:</strong> Interfaces simplificadas para desarrolladores</p>
+                    </div>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-year">2020</div>
+                    <div class="timeline-content">
+                        <h3>🔮 DESFire EV3 - Estado del Arte</h3>
+                        <p><strong>Tecnología:</strong> Última generación con mejoras cuánticas</p>
+                        <p><strong>Seguridad:</strong> Protección avanzada contra ataques futuros</p>
+                        <p><strong>Ecosistema:</strong> Integración IoT y servicios cloud</p>
+                    </div>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-year">2024</div>
+                    <div class="timeline-content">
+                        <h3>🌟 Estado Actual</h3>
+                        <p><strong>Recomendación:</strong> Migración completa desde Classic</p>
+                        <p><strong>Estándar:</strong> AES-128 como mínimo aceptable</p>
+                        <p><strong>Futuro:</strong> Preparación para era post-cuántica</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel de Seguridad Actual -->
+        <div id="security" class="content-panel">
+            <h2 class="panel-title">🛡️ Estado de Seguridad Actual</h2>
+            
+            <div class="vulnerability-alert">
+                <div class="vulnerability-title">🚨 Alertas de Seguridad Críticas</div>
+                <div class="algorithm-grid">
+                    <div class="algorithm-card">
+                        <h3>MIFARE Classic - RIESGO EXTREMO</h3>
+                        <ul>
+                            <li>💀 <strong>Clonación en segundos:</strong> Herramientas como Proxmark3, Flipper Zero</li>
+                            <li>🔓 <strong>Ataques automatizados:</strong> Scripts públicos disponibles</li>
+                            <li>⚡ <strong>Hardware barato:</strong> Dispositivos de clonación &lt; $50</li>
+                            <li>📱 <strong>Apps móviles:</strong> NFC TagInfo detecta vulnerabilidades</li>
+                        </ul>
+                        <p><strong>🚫 PROHIBIDO para:</strong> Pagos, acceso crítico, datos sensibles</p>
+                    </div>
+                    
+                    <div class="algorithm-card">
+                        <h3>DES en DESFire - RIESGO ALTO</h3>
+                        <ul>
+                            <li>⏰ <strong>Obsolescencia:</strong> NIST deprecó DES en 2005</li>
+                            <li>💻 <strong>Fuerza bruta:</strong> Factible con recursos modernos</li>
+                            <li>🔬 <strong>Ataques académicos:</strong> Múltiples vectores conocidos</li>
+                        </ul>
+                        <p><strong>⚠️ MIGRAR a:</strong> 3DES o preferiblemente AES</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="recommendation-box">
+                <div class="recommendation-title">✅ Buenas Prácticas de Seguridad</div>
+                <div class="algorithm-grid">
+                    <div class="algorithm-card">
+                        <h3>🔐 Gestión de Claves</h3>
+                        <ul class="feature-list">
+                            <li>Usar claves únicas por tarjeta/aplicación</li>
+                            <li>Implementar rotación periódica de claves</li>
+                            <li>Nunca usar claves por defecto</li>
+                            <li>Almacenar claves en HSM cuando sea posible</li>
+                            <li>Derivación de claves desde master key</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="algorithm-card">
+                        <h3>🛡️ Implementación Segura</h3>
+                        <ul class="feature-list">
+                            <li>Validar SIEMPRE la autenticación mutua</li>
+                            <li>Implementar timeouts en comunicaciones</li>
+                            <li>Usar diversificación de claves por UID</li>
+                            <li>Cifrar comunicaciones end-to-end</li>
+                            <li>Logging y monitoreo de transacciones</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="algorithm-card">
+                        <h3>🔍 Detección de Ataques</h3>
+                        <ul class="feature-list">
+                            <li>Monitorear intentos de autenticación fallidos</li>
+                            <li>Detectar patrones de uso anómalos</li>
+                            <li>Implementar blacklists de UIDs comprometidos</li>
+                            <li>Alertas por duplicación de transacciones</li>
+                            <li>Análisis forense de incidentes</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="algorithm-card">
+                        <h3>📋 Auditoría y Compliance</h3>
+                        <ul class="feature-list">
+                            <li>Certificaciones Common Criteria</li>
+                            <li>Auditorías periódicas de seguridad</li>
+                            <li>Cumplimiento PCI-DSS para pagos</li>
+                            <li>Documentación de arquitectura de seguridad</li>
+                            <li>Planes de respuesta a incidentes</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="algorithm-grid">
+                <div class="algorithm-card">
+                    <h3>🎯 Herramientas de Pentesting</h3>
+                    <p><strong>Para evaluar la seguridad de tus sistemas:</strong></p>
+                    <ul>
+                        <li><strong>Proxmark3:</strong> Suite completa de análisis NFC/RFID</li>
+                        <li><strong>LibNFC:</strong> Biblioteca para desarrollo de herramientas</li>
+                        <li><strong>Chameleon Mini:</strong> Emulador programable</li>
+                        <li><strong>MFCUK/MFOC:</strong> Específicos para Classic</li>
+                        <li><strong>NFC TagInfo:</strong> App móvil para análisis básico</li>
+                    </ul>
+                </div>
+                
+                <div class="algorithm-card">
+                    <h3>📊 Métricas de Seguridad</h3>
+                    <p><strong>KPIs para monitorear:</strong></p>
+                    <ul>
+                        <li><strong>MTBD:</strong> Mean Time Between Detections</li>
+                        <li><strong>False Positive Rate:</strong> &lt; 0.1% objetivo</li>
+                        <li><strong>Tiempo de rotación de claves:</strong> &lt; 30 días crítico</li>
+                        <li><strong>Cobertura de cifrado:</strong> 100% datos sensibles</li>
+                        <li><strong>Compliance score:</strong> &gt; 95% auditorías</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="vulnerability-alert">
+                <div class="vulnerability-title">⚡ Amenazas Emergentes</div>
+                <div class="algorithm-grid">
+                    <div style="grid-column: 1 / -1;">
+                        <h3>🔮 Computación Cuántica</h3>
+                        <p><strong>Impacto esperado:</strong> AES-128 podría ser vulnerable en 10-15 años</p>
+                        <p><strong>Mitigación:</strong> Monitorear desarrollo de algoritmos post-cuánticos</p>
+                        <p><strong>Preparación:</strong> Diseñar sistemas con crypto-agility</p>
+                        
+                        <h3>🤖 Ataques con IA</h3>
+                        <p><strong>Side-channel mejorados:</strong> IA puede detectar patrones imperceptibles</p>
+                        <p><strong>Ataques adaptativos:</strong> ML para optimizar vectores de ataque</p>
+                        <p><strong>Defensa:</strong> Contramedidas dinámicas y randomización</p>
+                        
+                        <h3>📱 Hardware Commodity</h3>
+                        <p><strong>Democratización:</strong> Herramientas de ataque cada vez más accesibles</p>
+                        <p><strong>Smartphones:</strong> NFC nativo permite ataques básicos</p>
+                        <p><strong>Respuesta:</strong> Detectar y bloquear dispositivos no autorizados</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="recommendation-box">
+                <div class="recommendation-title">🚀 Roadmap de Migración</div>
+                <h3>📅 Plan de Acción Inmediata (0-6 meses)</h3>
+                <ol>
+                    <li><strong>Auditoría completa:</strong> Inventario de todas las implementaciones MIFARE</li>
+                    <li><strong>Identificar Classic:</strong> Marcar sistemas de alto riesgo</li>
+                    <li><strong>Plan de migración:</strong> Priorizar por criticidad y exposición</li>
+                    <li><strong>Pilot project:</strong> Migrar un sistema pequeño como prueba</li>
+                </ol>
+
+                <h3>🎯 Objetivos a Mediano Plazo (6-18 meses)</h3>
+                <ol>
+                    <li><strong>Eliminar Classic:</strong> Migración completa de sistemas críticos</li>
+                    <li><strong>Estandarizar en AES:</strong> Implementar DESFire EV2+ o Plus EV2</li>
+                    <li><strong>Mejorar gestión de claves:</strong> Implementar HSM o KMS</li>
+                    <li><strong>Automatizar monitoreo:</strong> SIEM con reglas específicas NFC</li>
+                </ol>
+
+                <h3>🌟 Visión a Largo Plazo (18+ meses)</h3>
+                <ol>
+                    <li><strong>Zero Trust NFC:</strong> Verificación continua de dispositivos</li>
+                    <li><strong>Crypto-agility:</strong> Sistema preparado para algoritmos futuros</li>
+                    <li><strong>Integración IoT:</strong> NFC como parte del ecosistema seguro</li>
+                    <li><strong>Post-quantum ready:</strong> Evaluación de algoritmos resistentes</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showPanel(panelId) {
+            // Ocultar todos los paneles
+            document.querySelectorAll('.content-panel').forEach(panel => {
+                panel.classList.remove('active');
+            });
+            
+            // Mostrar el panel seleccionado
+            document.getElementById(panelId).classList.add('active');
+            
+            // Actualizar botones de navegación
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+        }
+
+        // Animaciones al cargar
+        document.addEventListener('DOMContentLoaded', function() {
+            // Animar las barras de seguridad
+            setTimeout(() => {
+                document.querySelectorAll('.security-fill').forEach(fill => {
+                    const width = fill.style.width;
+                    fill.style.width = '0%';
+                    setTimeout(() => {
+                        fill.style.width = width;
+                    }, 100);
+                });
+            }, 500);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Construcción del Cryptogram MIFARE DESFire</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+        }
+        .title {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 2.2em;
+            font-weight: bold;
+        }
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+        }
+        .step-container {
+            margin: 30px 0;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            border-left: 5px solid #007bff;
+        }
+        .step-title {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #007bff;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+        .step-number {
+            background: #007bff;
+            color: white;
+            border-radius: 50%;
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 15px;
+        }
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            margin: 15px 0;
+            overflow-x: auto;
+            border: 1px solid #4a5568;
+        }
+        .bytes-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin: 20px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            border: 2px solid #e9ecef;
+            min-height: 60px;
+            align-items: flex-start;
+            align-content: flex-start;
+        }
+        .byte-cube {
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            font-weight: bold;
+            border-radius: 4px;
+            border: 1px solid;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+        .byte-cube:hover {
+            transform: scale(1.1);
+            z-index: 10;
+        }
+        .byte-cube:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            top: -35px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 5px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+            z-index: 20;
+        }
+        .command-byte { background: #ffcccb; border-color: #ff6b6b; color: #c92a2a; }
+        .key-number-byte { background: #ffe066; border-color: #ffd43b; color: #e67e22; }
+        .new-key-byte { background: #74c0fc; border-color: #339af0; color: #1864ab; }
+        .version-byte { background: #b2f2bb; border-color: #51cf66; color: #2b8a3e; }
+        .crc-byte { background: #ffa8cc; border-color: #f06595; color: #c2185b; }
+        .padding-byte { background: #f1f3f4; border-color: #9aa0a6; color: #5f6368; }
+        .controls {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 1em;
+            cursor: pointer;
+            margin: 0 10px;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            margin: 25px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-cube {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            border: 1px solid;
+        }
+        .info-panel {
+            background: #e8f4fd;
+            border: 2px solid #007bff;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .current-step {
+            font-weight: bold;
+            color: #007bff;
+            font-size: 1.1em;
+        }
+        .byte-count {
+            background: #28a745;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            margin-left: 10px;
+        }
+        .highlight-section {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">🔐 Construcción del Cryptogram</h1>
+        <p class="subtitle">Visualización paso a paso de la construcción del cryptogram para el comando ChangeKey</p>
+        
+        <div class="info-panel">
+            <div class="current-step" id="currentStep">Paso 1: Datos iniciales</div>
+            <div id="stepDescription">Comenzamos con los datos que formarán parte del cálculo del CRC32</div>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-cube command-byte"></div>
+                <span>Comando (0xC4)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-cube key-number-byte"></div>
+                <span>Key Number</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-cube new-key-byte"></div>
+                <span>New Key (16 bytes)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-cube version-byte"></div>
+                <span>Key Version</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-cube crc-byte"></div>
+                <span>CRC32 (4 bytes)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-cube padding-byte"></div>
+                <span>Padding (0x00)</span>
+            </div>
+        </div>
+
+        <!-- Paso 1: Datos para CRC -->
+        <div class="step-container" id="step1">
+            <div class="step-title">
+                <span class="step-number">1</span>
+                Datos para calcular CRC32
+                <span class="byte-count" id="crcDataCount">18 bytes</span>
+            </div>
+            <div class="code-block">
+crypto_data = bytes([0xC4, key_number]) + new_key + bytes([new_key_version])</div>
+            <div class="bytes-container" id="crcDataBytes">
+                <!-- Los bytes se generarán aquí -->
+            </div>
+        </div>
+
+        <!-- Paso 2: Cálculo del CRC -->
+        <div class="step-container" id="step2" style="opacity: 0.3;">
+            <div class="step-title">
+                <span class="step-number">2</span>
+                Cálculo del CRC32
+            </div>
+            <div class="code-block">
+crc_crypto = self.crc32_desfire(crypto_data)
+# Resultado: <span id="crcResult">0x12345678</span></div>
+            <div class="highlight-section">
+                <strong>🔍 CRC32 calculado:</strong> <span id="crcDisplay" style="font-family: monospace; font-size: 1.2em;">0x12345678</span>
+            </div>
+        </div>
+
+        <!-- Paso 3: Construcción del cryptogram -->
+        <div class="step-container" id="step3" style="opacity: 0.3;">
+            <div class="step-title">
+                <span class="step-number">3</span>
+                Construcción del Cryptogram (sin CRC)
+                <span class="byte-count" id="cryptogramCount1">17 bytes</span>
+            </div>
+            <div class="code-block">
+cryptogram = new_key + bytes([new_key_version])</div>
+            <div class="bytes-container" id="cryptogramBytes1">
+                <!-- Los bytes se generarán aquí -->
+            </div>
+        </div>
+
+        <!-- Paso 4: Agregar CRC en little endian -->
+        <div class="step-container" id="step4" style="opacity: 0.3;">
+            <div class="step-title">
+                <span class="step-number">4</span>
+                Agregar CRC32 en Little Endian
+                <span class="byte-count" id="cryptogramCount2">21 bytes</span>
+            </div>
+            <div class="code-block">
+cryptogram += struct.pack('&lt;L', crc_crypto)  # CRC in little endian</div>
+            <div class="highlight-section">
+                <strong>📝 Little Endian:</strong> El CRC <span style="font-family: monospace;">0x12345678</span> se almacena como: 
+                <span style="font-family: monospace; color: #007bff;">0x78 0x56 0x34 0x12</span>
+            </div>
+            <div class="bytes-container" id="cryptogramBytes2">
+                <!-- Los bytes se generarán aquí -->
+            </div>
+        </div>
+
+        <!-- Paso 5: Padding final -->
+        <div class="step-container" id="step5" style="opacity: 0.3;">
+            <div class="step-title">
+                <span class="step-number">5</span>
+                Padding para cifrado AES (múltiplo de 16)
+                <span class="byte-count" id="finalCount">32 bytes</span>
+            </div>
+            <div class="code-block">
+# Agregar padding de ceros hasta completar múltiplo de 16 bytes
+padding_needed = 16 - (len(cryptogram) % 16)
+cryptogram += bytes([0x00] * padding_needed)</div>
+            <div class="bytes-container" id="finalCryptogram">
+                <!-- Los bytes se generarán aquí -->
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn" id="prevBtn" onclick="previousStep()" disabled>⬅️ Anterior</button>
+            <button class="btn" id="nextBtn" onclick="nextStep()">Siguiente ➡️</button>
+            <button class="btn" onclick="resetAnimation()" style="background: #6c757d;">🔄 Reiniciar</button>
+        </div>
+    </div>
+
+    <script>
+        let currentStepNum = 1;
+        const maxSteps = 5;
+        
+        // Datos de ejemplo
+        const sampleData = {
+            command: 0xC4,
+            keyNumber: 0x00,
+            newKey: [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF],
+            keyVersion: 0x01,
+            crc32: 0x12345678
+        };
+
+        function createByteCube(value, type, tooltip = '') {
+            const cube = document.createElement('div');
+            cube.className = `byte-cube ${type}-byte`;
+            cube.textContent = value.toString(16).toUpperCase().padStart(2, '0');
+            if (tooltip) {
+                cube.setAttribute('data-tooltip', tooltip);
+            }
+            return cube;
+        }
+
+        function updateStepVisibility() {
+            for (let i = 1; i <= maxSteps; i++) {
+                const step = document.getElementById(`step${i}`);
+                if (i <= currentStepNum) {
+                    step.style.opacity = '1';
+                } else {
+                    step.style.opacity = '0.3';
+                }
+            }
+            
+            // Actualizar botones
+            document.getElementById('prevBtn').disabled = currentStepNum === 1;
+            document.getElementById('nextBtn').disabled = currentStepNum === maxSteps;
+            
+            // Actualizar descripción del paso
+            updateStepDescription();
+        }
+
+        function updateStepDescription() {
+            const descriptions = {
+                1: "Preparamos los datos que se usarán para calcular el CRC32: comando, número de clave, nueva clave y versión.",
+                2: "Calculamos el CRC32 de todos los datos anteriores usando el algoritmo específico de DESFire.",
+                3: "Iniciamos la construcción del cryptogram con la nueva clave y su versión (sin incluir comando ni key_number).",
+                4: "Agregamos el CRC32 al cryptogram en formato Little Endian (byte menos significativo primero).",
+                5: "Añadimos padding de ceros hasta completar un múltiplo de 16 bytes para el cifrado AES."
+            };
+            
+            document.getElementById('currentStep').textContent = `Paso ${currentStepNum}: ${getCurrentStepTitle()}`;
+            document.getElementById('stepDescription').textContent = descriptions[currentStepNum];
+        }
+
+        function getCurrentStepTitle() {
+            const titles = {
+                1: "Datos para CRC32",
+                2: "Cálculo del CRC32", 
+                3: "Construcción del Cryptogram",
+                4: "Agregar CRC32 (Little Endian)",
+                5: "Padding Final"
+            };
+            return titles[currentStepNum];
+        }
+
+        function renderStep1() {
+            const container = document.getElementById('crcDataBytes');
+            container.innerHTML = '';
+            
+            // Comando
+            container.appendChild(createByteCube(sampleData.command, 'command', 'Comando ChangeKey'));
+            
+            // Key Number
+            container.appendChild(createByteCube(sampleData.keyNumber, 'key-number', 'Número de clave'));
+            
+            // New Key
+            sampleData.newKey.forEach((byte, index) => {
+                container.appendChild(createByteCube(byte, 'new-key', `New Key byte ${index}`));
+            });
+            
+            // Key Version
+            container.appendChild(createByteCube(sampleData.keyVersion, 'version', 'Versión de la clave'));
+        }
+
+        function renderStep3() {
+            const container = document.getElementById('cryptogramBytes1');
+            container.innerHTML = '';
+            
+            // New Key (sin comando ni key number)
+            sampleData.newKey.forEach((byte, index) => {
+                container.appendChild(createByteCube(byte, 'new-key', `New Key byte ${index}`));
+            });
+            
+            // Key Version
+            container.appendChild(createByteCube(sampleData.keyVersion, 'version', 'Versión de la clave'));
+        }
+
+        function renderStep4() {
+            const container = document.getElementById('cryptogramBytes2');
+            container.innerHTML = '';
+            
+            // New Key
+            sampleData.newKey.forEach((byte, index) => {
+                container.appendChild(createByteCube(byte, 'new-key', `New Key byte ${index}`));
+            });
+            
+            // Key Version
+            container.appendChild(createByteCube(sampleData.keyVersion, 'version', 'Versión de la clave'));
+            
+            // CRC32 en little endian
+            const crcBytes = [
+                (sampleData.crc32 & 0xFF),
+                (sampleData.crc32 >> 8) & 0xFF,
+                (sampleData.crc32 >> 16) & 0xFF,
+                (sampleData.crc32 >> 24) & 0xFF
+            ];
+            
+            crcBytes.forEach((byte, index) => {
+                container.appendChild(createByteCube(byte, 'crc', `CRC32 byte ${index} (Little Endian)`));
+            });
+        }
+
+        function renderStep5() {
+            const container = document.getElementById('finalCryptogram');
+            container.innerHTML = '';
+            
+            // New Key
+            sampleData.newKey.forEach((byte, index) => {
+                container.appendChild(createByteCube(byte, 'new-key', `New Key byte ${index}`));
+            });
+            
+            // Key Version
+            container.appendChild(createByteCube(sampleData.keyVersion, 'version', 'Versión de la clave'));
+            
+            // CRC32 en little endian
+            const crcBytes = [
+                (sampleData.crc32 & 0xFF),
+                (sampleData.crc32 >> 8) & 0xFF,
+                (sampleData.crc32 >> 16) & 0xFF,
+                (sampleData.crc32 >> 24) & 0xFF
+            ];
+            
+            crcBytes.forEach((byte, index) => {
+                container.appendChild(createByteCube(byte, 'crc', `CRC32 byte ${index} (Little Endian)`));
+            });
+            
+            // Padding (11 bytes para llegar a 32 total)
+            for (let i = 0; i < 11; i++) {
+                container.appendChild(createByteCube(0x00, 'padding', `Padding byte ${i}`));
+            }
+        }
+
+        function nextStep() {
+            if (currentStepNum < maxSteps) {
+                currentStepNum++;
+                updateStepVisibility();
+                
+                // Renderizar el nuevo paso
+                switch(currentStepNum) {
+                    case 2:
+                        // Actualizar CRC display
+                        document.getElementById('crcResult').textContent = '0x12345678';
+                        document.getElementById('crcDisplay').textContent = '0x12345678';
+                        break;
+                    case 3:
+                        renderStep3();
+                        break;
+                    case 4:
+                        renderStep4();
+                        break;
+                    case 5:
+                        renderStep5();
+                        break;
+                }
+            }
+        }
+
+        function previousStep() {
+            if (currentStepNum > 1) {
+                currentStepNum--;
+                updateStepVisibility();
+            }
+        }
+
+        function resetAnimation() {
+            currentStepNum = 1;
+            updateStepVisibility();
+            renderStep1();
+        }
+
+        // Inicialización
+        document.addEventListener('DOMContentLoaded', function() {
+            renderStep1();
+            updateStepVisibility();
+        });
+    </script>
+</body>
+</html>

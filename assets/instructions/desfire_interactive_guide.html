@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guía Interactiva DESFire EV1</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .nav-tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+            gap: 10px;
+        }
+
+        .tab-btn {
+            padding: 12px 24px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+        }
+
+        .tab-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .tab-btn.active {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .tab-content {
+            display: none;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .phase-container {
+            padding: 30px;
+        }
+
+        .phase {
+            margin-bottom: 30px;
+            border-radius: 15px;
+            padding: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .phase::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .phase:hover::before {
+            left: 100%;
+        }
+
+        .phase:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+        }
+
+        .phase-1 { background: linear-gradient(135deg, #e9d2f4, #ddb8e8); border-left: 5px solid #8430ce; }
+        .phase-2 { background: linear-gradient(135deg, #d4e6f7, #b8d4f1); border-left: 5px solid #1a73e8; }
+        .phase-3 { background: linear-gradient(135deg, #fce8d6, #f7d1b8); border-left: 5px solid #f5831f; }
+        .phase-4 { background: linear-gradient(135deg, #d8f1cf, #c1e8b8); border-left: 5px solid #0f9d58; }
+
+        .phase-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .phase-number {
+            background: rgba(0,0,0,0.1);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .phase-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .phase.expanded .phase-content {
+            max-height: 1000px;
+        }
+
+        .command {
+            background: rgba(0,0,0,0.05);
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 3px solid #333;
+            font-family: 'Courier New', monospace;
+            position: relative;
+        }
+
+        .command:hover {
+            background: rgba(0,0,0,0.1);
+        }
+
+        .command-label {
+            font-weight: bold;
+            color: #d32f2f;
+            margin-bottom: 5px;
+        }
+
+        .command-code {
+            color: #1976d2;
+            font-weight: bold;
+        }
+
+        .expand-btn {
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            margin-left: auto;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+
+        .phase.expanded .expand-btn {
+            transform: rotate(180deg);
+        }
+
+        /* Estilos para el diagrama de comandos */
+        .command-diagram {
+            padding: 30px;
+        }
+
+        .apdu-structure {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            margin: 20px 0;
+            justify-content: center;
+        }
+
+        .apdu-field {
+            padding: 15px;
+            text-align: center;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .apdu-field:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .field-cla { background: #d8f1cf; border: 2px solid #0f9d58; min-width: 80px; }
+        .field-ins { background: #fce8d6; border: 2px solid #f5831f; min-width: 80px; }
+        .field-p1p2 { background: #fef7d5; border: 2px solid #f4b400; min-width: 80px; }
+        .field-lc { background: #e9d2f4; border: 2px solid #9334e6; min-width: 80px; }
+        .field-keyno { background: #d4e6f7; border: 2px solid #1a73e8; min-width: 100px; }
+        .field-keydata { background: #fadcdc; border: 2px solid #db4437; min-width: 200px; }
+
+        .tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+
+        .apdu-field:hover .tooltip {
+            opacity: 1;
+        }
+
+        .scenario {
+            margin: 30px 0;
+            padding: 25px;
+            border-radius: 15px;
+            position: relative;
+        }
+
+        .scenario-1 {
+            background: linear-gradient(135deg, #d4e6f7, #b8d4f1);
+            border: 2px solid #1a73e8;
+        }
+
+        .scenario-2 {
+            background: linear-gradient(135deg, #fadcdc, #f5c6c6);
+            border: 2px solid #db4437;
+        }
+
+        .scenario-title {
+            font-size: 1.3rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .keydata-structure {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            justify-content: center;
+            margin: 15px 0;
+        }
+
+        .keydata-field {
+            padding: 12px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .keydata-field:hover {
+            transform: scale(1.05);
+        }
+
+        .field-newkey { background: #d8f1cf; border: 2px solid #0f9d58; min-width: 200px; }
+        .field-ver { background: #fef7d5; border: 2px solid #f4b400; min-width: 60px; }
+        .field-crc { background: #fce8d6; border: 2px solid #f5831f; min-width: 120px; }
+        .field-xor { background: #d8f1cf; border: 2px solid #0f9d58; min-width: 180px; }
+        .field-crc2 { background: #e9d2f4; border: 2px solid #9334e6; min-width: 120px; }
+
+        .info-panel {
+            background: rgba(0,0,0,0.05);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .info-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .info-list {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .info-list li {
+            margin: 8px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .info-list li::before {
+            content: '•';
+            color: #1976d2;
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+        }
+
+        .progress-bar {
+            background: rgba(0,0,0,0.1);
+            height: 6px;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        .interactive-hint {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 8px;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Guía Interactiva DESFire EV1</h1>
+            <p>Configuración de Tarjetas y Cambio de Claves</p>
+        </div>
+
+        <nav class="nav-tabs">
+            <button class="tab-btn active" onclick="showTab('config')">
+                📋 Proceso de Configuración
+            </button>
+            <button class="tab-btn" onclick="showTab('commands')">
+                🔧 Formato de Comandos
+            </button>
+        </nav>
+
+        <!-- Tab 1: Proceso de Configuración -->
+        <div id="config-tab" class="tab-content active">
+            <div class="phase-container">
+                <div class="interactive-hint">
+                    💡 <strong>Haz clic en cada fase</strong> para ver los detalles y comandos específicos
+                </div>
+                
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 0%" id="progress"></div>
+                </div>
+
+                <div class="phase phase-1" onclick="togglePhase(this, 1)">
+                    <div class="phase-title">
+                        <div class="phase-number">1</div>
+                        FASE 1: Autenticación a Nivel de Tarjeta
+                        <button class="expand-btn">▼</button>
+                    </div>
+                    <div class="phase-content">
+                        <div class="command">
+                            <div class="command-label">Verificar Capacidades:</div>
+                            <div class="command-code">0x60 (Get Version)</div>
+                            <p>Obtiene información sobre el tipo de tarjeta y sus capacidades</p>
+                        </div>
+                        <div class="command">
+                            <div class="command-label">Autenticación Maestra:</div>
+                            <div class="command-code">0xAA (Authenticate)</div>
+                            <p>Autenticarse con la clave maestra de la tarjeta (nivel PICC)</p>
+                        </div>
+                        <div class="command">
+                            <div class="command-label">Configurar Ajustes (Opcional):</div>
+                            <div class="command-code">0x54 (Change Key Settings)</div>
+                            <p>Parámetro: 0x0F (Permitir crear aplicaciones sin autenticación)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="phase phase-2" onclick="togglePhase(this, 2)">
+                    <div class="phase-title">
+                        <div class="phase-number">2</div>
+                        FASE 2: Creación de la Aplicación
+                        <button class="expand-btn">▼</button>
+                    </div>
+                    <div class="phase-content">
+                        <div class="command">
+                            <div class="command-label">Crear Aplicación:</div>
+                            <div class="command-code">0xCA (Create Application)</div>
+                        </div>
+                        <div style="margin: 15px 0;">
+                            <h4>Parámetros requeridos:</h4>
+                            <div class="info-panel">
+                                <ul class="info-list">
+                                    <li><strong>AID (3 bytes):</strong> Identificador único (ej: 01 02 03)</li>
+                                    <li><strong>Key Settings (1 byte):</strong> Configuración de claves (ej: 0x0F)</li>
+                                    <li><strong>Num of Keys (1 byte):</strong> Cantidad y tipo (ej: 0x81 = 1 clave AES)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="phase phase-3" onclick="togglePhase(this, 3)">
+                    <div class="phase-title">
+                        <div class="phase-number">3</div>
+                        FASE 3: Selección y Autenticación en la Aplicación
+                        <button class="expand-btn">▼</button>
+                    </div>
+                    <div class="phase-content">
+                        <div class="command">
+                            <div class="command-label">Seleccionar Aplicación:</div>
+                            <div class="command-code">0x5A (Select Application)</div>
+                            <p>Usar el AID de la aplicación creada en la fase anterior</p>
+                        </div>
+                        <div class="command">
+                            <div class="command-label">Autenticación en Aplicación:</div>
+                            <div class="command-code">0xAA (Authenticate)</div>
+                            <p>Autenticarse con la clave maestra de la aplicación (inicialmente todas ceros)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="phase phase-4" onclick="togglePhase(this, 4)">
+                    <div class="phase-title">
+                        <div class="phase-number">4</div>
+                        FASE 4: Creación del Archivo de Valor
+                        <button class="expand-btn">▼</button>
+                    </div>
+                    <div class="phase-content">
+                        <div class="command">
+                            <div class="command-label">Crear Archivo de Valor:</div>
+                            <div class="command-code">0xCC (Create Value File)</div>
+                        </div>
+                        <div style="margin: 15px 0;">
+                            <h4>Parámetros de configuración:</h4>
+                            <div class="info-panel">
+                                <ul class="info-list">
+                                    <li><strong>File No:</strong> ID del archivo (ej: 01)</li>
+                                    <li><strong>Comm Settings:</strong> 0x00=Plano, 0x01=CMAC, 0x03=Cifrado</li>
+                                    <li><strong>Access Rights:</strong> Control de permisos por operación</li>
+                                    <li><strong>Lower/Upper Limit:</strong> Rango de valores permitidos</li>
+                                    <li><strong>Initial Value:</strong> Valor inicial del archivo</li>
+                                    <li><strong>Limited Credit:</strong> Habilitar crédito limitado</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 2: Formato de Comandos -->
+        <div id="commands-tab" class="tab-content">
+            <div class="command-diagram">
+                <div class="interactive-hint">
+                    🖱️ <strong>Pasa el cursor</strong> sobre cada campo para ver su descripción
+                </div>
+
+                <h2 style="text-align: center; margin-bottom: 30px;">Estructura Base del APDU para ChangeKey</h2>
+                
+                <div class="apdu-structure">
+                    <div class="apdu-field field-cla">
+                        CLA<br>0x90
+                        <div class="tooltip">Indica comando envuelto en formato APDU para DESFire</div>
+                    </div>
+                    <div class="apdu-field field-ins">
+                        INS<br>0xC4
+                        <div class="tooltip">Código de instrucción para ChangeKey</div>
+                    </div>
+                    <div class="apdu-field field-p1p2">
+                        P1<br>0x00
+                        <div class="tooltip">Parámetro no utilizado</div>
+                    </div>
+                    <div class="apdu-field field-p1p2">
+                        P2<br>0x00
+                        <div class="tooltip">Parámetro no utilizado</div>
+                    </div>
+                    <div class="apdu-field field-lc">
+                        Lc<br>Len+1
+                        <div class="tooltip">Longitud total de datos (KeyNo + KeyData)</div>
+                    </div>
+                    <div class="apdu-field field-keyno">
+                        KeyNo
+                        <div class="tooltip">Número de clave a cambiar (0-13)</div>
+                    </div>
+                    <div class="apdu-field field-keydata">
+                        KeyData (variable)
+                        <div class="tooltip">Datos de la clave según escenario</div>
+                    </div>
+                    <div class="apdu-field field-cla">
+                        Le<br>0x00
+                        <div class="tooltip">Longitud esperada de respuesta</div>
+                    </div>
+                </div>
+
+                <div class="scenario scenario-1">
+                    <div class="scenario-title">📝 Escenario 1: Cambiar la clave con la que nos autenticamos</div>
+                    <p style="text-align: center; margin-bottom: 15px;">
+                        Cuando cambiamos la misma clave que usamos para autenticarnos
+                    </p>
+                    <div class="keydata-structure">
+                        <div class="keydata-field field-newkey">
+                            NewKey (16 bytes para AES)
+                            <div class="tooltip">Nueva clave en formato AES</div>
+                        </div>
+                        <div class="keydata-field field-ver">
+                            Ver
+                            <div class="tooltip">Versión de la clave</div>
+                        </div>
+                        <div class="keydata-field field-crc">
+                            CRC (4 bytes)
+                            <div class="tooltip">Checksum calculado sobre NewKey + Ver</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="scenario scenario-2">
+                    <div class="scenario-title">🔄 Escenario 2: Cambiar una clave diferente</div>
+                    <p style="text-align: center; margin-bottom: 15px;">
+                        Cuando cambiamos una clave diferente a la usada para autenticación
+                    </p>
+                    <div class="keydata-structure">
+                        <div class="keydata-field field-xor">
+                            NewKey XOR CurrentKey
+                            <div class="tooltip">XOR entre nueva clave y clave actual</div>
+                        </div>
+                        <div class="keydata-field field-ver">
+                            Ver
+                            <div class="tooltip">Versión de la clave</div>
+                        </div>
+                        <div class="keydata-field field-crc">
+                            CRC1 (4 bytes)
+                            <div class="tooltip">CRC sobre (NewKey XOR CurrentKey + Ver)</div>
+                        </div>
+                        <div class="keydata-field field-crc2">
+                            CRC2 (4 bytes)
+                            <div class="tooltip">CRC sobre (NewKey + Ver)</div>
+                        </div>
+                    </div>
+                    <div class="info-panel">
+                        <div class="info-title">Cálculo de CRCs:</div>
+                        <ul class="info-list">
+                            <li><strong>CRC1:</strong> Calculado sobre (NewKey XOR CurrentKey + Ver)</li>
+                            <li><strong>CRC2:</strong> Calculado sobre (NewKey + Ver)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="info-panel" style="margin-top: 30px;">
+                    <div class="info-title">🔍 Notas Importantes:</div>
+                    <ul class="info-list">
+                        <li>El formato exacto depende del escenario de cambio de clave</li>
+                        <li>Los CRCs proporcionan integridad de datos durante la transmisión</li>
+                        <li>El campo KeyNo puede tener bits adicionales para operaciones especiales</li>
+                        <li>Todos los datos deben estar cifrados según la configuración de seguridad</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let expandedPhases = new Set();
+        let currentProgress = 0;
+
+        function showTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabName + '-tab').classList.add('active');
+            
+            // Update tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+        }
+
+        function togglePhase(element, phaseNumber) {
+            const isExpanded = element.classList.contains('expanded');
+            
+            if (isExpanded) {
+                element.classList.remove('expanded');
+                expandedPhases.delete(phaseNumber);
+            } else {
+                element.classList.add('expanded');
+                expandedPhases.add(phaseNumber);
+            }
+            
+            updateProgress();
+        }
+
+        function updateProgress() {
+            const totalPhases = 4;
+            const completedPhases = expandedPhases.size;
+            const progressPercent = (completedPhases / totalPhases) * 100;
+            
+            document.getElementById('progress').style.width = progressPercent + '%';
+            
+            if (completedPhases === totalPhases) {
+                setTimeout(() => {
+                    alert('🎉 ¡Felicitaciones! Has completado toda la configuración de DESFire EV1');
+                }, 500);
+            }
+        }
+
+        // Add some interactive animations
+        document.addEventListener('DOMContentLoaded', function() {
+            // Animate command fields on hover
+            document.querySelectorAll('.command').forEach(cmd => {
+                cmd.addEventListener('mouseenter', function() {
+                    this.style.transform = 'translateX(5px)';
+                });
+                
+                cmd.addEventListener('mouseleave', function() {
+                    this.style.transform = 'translateX(0)';
+                });
+            });
+
+            // Add click animation to APDU fields
+            document.querySelectorAll('.apdu-field, .keydata-field').forEach(field => {
+                field.addEventListener('click', function() {
+                    this.style.animation = 'none';
+                    setTimeout(() => {
+                        this.style.animation = 'pulse 0.5s ease';
+                    }, 10);
+                });
+            });
+        });
+
+        // CSS animation for pulse effect
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes pulse {
+                0% { transform: scale(1); }
+                50% { transform: scale(1.1); }
+                100% { transform: scale(1); }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
