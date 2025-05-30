@@ -10,6 +10,7 @@ import struct
 from Crypto.Cipher import AES
 from Crypto.Util import Counter
 import binascii
+from desfire_create_stdfile_python import CommMode, AccessRights, DESFireCreateStdDataFile, DESFireDeleteFile, parse_delete_command, parse_create_command, DESFireGetFileIDs, parse_get_file_ids_command
 
 class DESFireAES:
     def __init__(self, reader_interface):
@@ -684,6 +685,84 @@ def main():
             reader.connection.disconnect()
 
 
+def mainCreateSTDFile():
+    """Main function to demonstrate AES authentication and key change"""
+    
+    # Test basic communication first
+    print("Testing basic DESFire communication...")
+    if not get_version():
+        print("Basic communication test failed!")
+        return False
+    
+    print("\n" + "="*60)
+    print("Starting AES Authentication and Key Change Process")
+    print("="*60)
+    
+    # Initialize with real reader
+    reader = SmartCardReader(debug=True)
+    
+    # Connect to card reader
+    if not reader.connect_reader():
+        print("No se pudo conectar con el lector o la tarjeta")
+        return False
+    
+    desfire = DESFireAES(reader)
+    
+    # Application ID: 0xF00101
+    aid = bytes([0xF0, 0x01, 0x01])
+    
+    # Current key (the one we changed to in previous run)
+    current_key = bytes([0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70,
+                         0x80, 0x90, 0xA0, 0xB0, 0xB0, 0xA0, 0x90, 0x80])
+
+    try:
+        # Step 1: Select application
+        if not desfire.select_application(aid):
+            print("Failed to select application. Application may not exist.")
+            return False
+        
+        # Step 2: Authenticate with key 0
+        if not desfire.authenticate_aes(0, current_key):
+            print("Authentication failed. Check if key is correct.")
+            return False
+        
+        cmd1 = DESFireDeleteFile.delete_file(5)
+        response = desfire.send_command(cmd1)
+        if response[0] == 0x00:
+            print("deleted file success")
+        else:
+            print("delete file failed")
+
+        print("1. Comando para listar archivos:")
+        list_cmd = DESFireGetFileIDs.list_files()
+        print(f"   Comando: {list_cmd.hex().upper()}")
+        response = desfire.send_command(list_cmd)
+
+        response = DESFireGetFileIDs.parse_response(response)
+
+        parsed_list = parse_get_file_ids_command(list_cmd)
+        print(f"   Detalles: {parsed_list}")
+
+        # Step 3: Change key 2 to new key (SAME KEY)
+        print("Creando Archivo público (4KB):")
+        cmd1 = DESFireCreateStdDataFile.create_public_file(5, 1024)
+        response = desfire.send_command(cmd1)
+        if response[0] == 0x00:
+            print("Application selected successfully")
+            return True
+        else:
+            print(f"Error selecting application: {response[0]:02X}")
+            return False
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+    finally:
+        # Close connection
+        if reader.connection:
+            reader.connection.disconnect()
+
 if __name__ == "__main__":
     print("DESFire EV1 AES Authentication and Key Change")
     print("=" * 50)
@@ -693,5 +772,6 @@ if __name__ == "__main__":
     
     # if success:
     # Ejecutar demo de cambio de clave diferente
-    demo_change_different_key()
+    # demo_change_different_key()
+    mainCreateSTDFile()
 
