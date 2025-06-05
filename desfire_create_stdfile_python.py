@@ -466,7 +466,7 @@ if __name__ == "__main__":
     
     # Ejemplo 6: Archivo público
     print("6. Archivo público (4KB):")
-    cmd1 = DESFireCreateStdDataFile.create_public_file(25, 4096)
+    cmd1 = DESFireCreateStdDataFile.create_public_file(25, 1024)
     print(f"   Comando: {cmd1.hex().upper()}")
     parsed1 = parse_create_command(cmd1)
     print(f"   Detalles: {parsed1['access_rights']}")

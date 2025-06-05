@@ -732,6 +732,10 @@ def mainCreateSTDFile():
             print("deleted file success")
         else:
             print("delete file failed")
+            
+        if not desfire.authenticate_aes(0, current_key):
+            print("Authentication failed. Check if key is correct.")
+            return False
 
         print("1. Comando para listar archivos:")
         list_cmd = DESFireGetFileIDs.list_files()

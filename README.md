@@ -29,3 +29,18 @@ In addition, this project also contains a table of DESFire APDU response codes l
 - [NXP MIFARE DESFire EV1 Protocol Manual](https://raw.githubusercontent.com/revk/DESFireAES/master/DESFire.pdf) - written by [RevK](https://github.com/revk)
 - [EFTlab's Complete APDU Reponses document](https://www.eftlab.com/knowledge-base/complete-list-of-apdu-responses)
 - [Project] (https://www.d-logic.com/nfc-rfid-reader-sdk/software/desfire-c-console/)
+
+
+## Steps
+```shell
+desfire_refactored_classes_2.py
+    - format card
+    - create and select multiple applications
+desfire_aes_keychange.py
+    - change same key that authenticated
+desfire_aes_keychange_2.py
+    - change key with distinct authentication key
+        # demo_change_different_key()
+    - create STD files
+        # mainCreateSTDFile
+```
