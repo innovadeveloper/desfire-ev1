@@ -776,6 +776,6 @@ if __name__ == "__main__":
     
     # if success:
     # Ejecutar demo de cambio de clave diferente
-    # demo_change_different_key()
+    demo_change_different_key()
     mainCreateSTDFile()
 

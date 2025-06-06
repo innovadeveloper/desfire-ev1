@@ -536,16 +536,6 @@ def main():
 
 
 if __name__ == "__main__":
-    print("DESFire EV1 AES Authentication and Key Change")
-    print("=" * 50)
-    
-    # print("VERIFICANDO EL CAMBIO DE CLAVE...")
-    # verify_key_change()
-    
-    # # success = verify_key_change()
-    
-    # # if success:
-
     print("DESFire EV1 AES Authentication and Key Change v2")
     print("=" * 50)
     main()
