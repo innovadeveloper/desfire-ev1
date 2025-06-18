@@ -590,28 +590,79 @@ class DESFireFileWriter:
     
     def _write_encrypted_data(self, file_id: int, offset: int, data: bytes) -> bool:
         """Escribe datos en modo ENCRYPTED (con cifrado)"""
-        # Construir comando completo para cifrado
-        command_header = bytes([0x3D])  # WriteData command
-        command_params = struct.pack('<BL', file_id, offset)[0:4]  # file_id + 3 bytes offset
+        # 1. Primero cifrar los datos para conocer su longitud
+        padded_data = self.auth.crypto_utils.pad_data_iso(data)
+        print(f"Datos con padding: {padded_data.hex().upper()}")
         
-        # Cifrar datos + calcular CMAC
-        encrypted_data, cmac = self._encrypt_data_with_cmac(
-            command_header + command_params, data
-        )
+        encrypted_data = bytes(self.auth.crypto_utils.aes_encrypt(
+            padded_data, 
+            self.auth.session_key, 
+            self.auth.session_iv
+        ))
+        print(f"Datos cifrados: {encrypted_data.hex().upper()}")
         
-        # Construir comando final
-        command = command_header + command_params + encrypted_data + cmac
+        # 2. Actualizar IV para CMAC
+        self.auth.session_iv = encrypted_data[-16:]
         
-        print(f"Comando WriteData (ENCRYPTED): {command.hex().upper()}")
+        # 3. Construir comando completo para CMAC:
+        # cmd + file_id + offset + length + datos_cifrados
+        # IMPORTANTE: Length es la longitud de los datos ORIGINALES (sin cifrar), no de los datos cifrados + CMAC
+        original_data_length = len(data)  # Longitud de los datos originales
         
-        response = self.connection.send_command_unified(command)
+        print(f"Longitud datos originales: {original_data_length} bytes")
+        print(f"Longitud datos cifrados: {len(encrypted_data)} bytes")
         
-        if response[0] == 0x00:
+        cmac_command = bytes([0x3D])  # WriteData command
+        cmac_command += struct.pack('<B', file_id)  # File ID
+        cmac_command += struct.pack('<L', offset)[0:3]  # Offset (3 bytes, little-endian)
+        cmac_command += struct.pack('<L', original_data_length)[0:3]  # Length (3 bytes, little-endian)
+        cmac_command += encrypted_data  # Datos cifrados
+        
+        # 4. Calcular CMAC sobre el comando completo
+        cmac = self._calculate_cmac(cmac_command)
+        print(f"CMAC calculado: {cmac.hex().upper()}")
+        
+        # 5. Construir parámetros del comando APDU:
+        command_params = struct.pack('<B', file_id)  # File ID
+        command_params += struct.pack('<L', offset)[0:3]  # Offset (3 bytes, little-endian)
+        command_params += struct.pack('<L', original_data_length)[0:3]  # Length (3 bytes, little-endian)
+        
+        # 6. Calcular Lc correcto: parámetros + datos cifrados + CMAC
+        lc = len(command_params) + len(encrypted_data) + len(cmac)
+        
+        # 7. Construir comando APDU completo
+        command = bytes([0x90, 0x3D, 0x00, 0x00, lc]) + command_params + encrypted_data + cmac + bytes([0x00])
+        
+        print(f"\n=== Comando WriteData corregido ===")
+        print(f"APDU: {command.hex().upper()}")
+        print(f"\nDesglose:")
+        print(f"├── 90 3D 00 00: Encabezado APDU")
+        print(f"├── {lc:02X}: Lc = {lc} bytes ({1+3+3+len(encrypted_data)+len(cmac)})")
+        print(f"├── {file_id:02X}: File ID")
+        print(f"├── {offset:06X}: Offset = {offset}")
+        print(f"├── {original_data_length:06X}: Length = {original_data_length} bytes (datos originales)")
+        print(f"├── Length en hex: {struct.pack('<L', original_data_length)[0:3].hex().upper()} (little-endian)")
+        print(f"├── {encrypted_data.hex().upper()}: {len(encrypted_data)} bytes datos cifrados")
+        print(f"├── {cmac.hex().upper()}: {len(cmac)} bytes CMAC")
+        print(f"└── 00: Le")
+        
+        # Usar send_apdu directamente para el comando APDU completo
+        response, sw1, sw2 = self.connection.send_apdu(list(command))
+        
+        # Procesar respuesta
+        if sw1 == 0x90 and sw2 == 0x00:
             print("¡Datos escritos exitosamente!")
             return True
+        elif sw1 == 0x91:
+            if sw2 == 0x00:
+                print("¡Datos escritos exitosamente!")
+                return True
+            else:
+                print(f"Error al escribir datos: {sw2:02X}")
+                self._print_error_details(sw2)
+                return False
         else:
-            print(f"Error al escribir datos: {response[0]:02X}")
-            self._print_error_details(response[0])
+            print(f"Error al escribir datos: SW1={sw1:02X}, SW2={sw2:02X}")
             return False
     
     def _print_error_details(self, error_code: int):
@@ -629,38 +680,6 @@ class DESFireFileWriter:
         elif error_code == 0xEE:
             print("Error: Archivo ya existe")
     
-    def _encrypt_data_with_cmac(self, command_header: bytes, data: bytes) -> Tuple[bytes, bytes]:
-        """
-        Cifra datos y calcula CMAC para escritura en modo cifrado
-        
-        Args:
-            command_header: Header del comando (0x3D + parámetros)
-            data: Datos a cifrar
-            
-        Returns:
-            tuple: (datos_cifrados, cmac)
-        """
-        # 1. Aplicar padding ISO a los datos
-        padded_data = self.auth.crypto_utils.pad_data_iso(data)
-        print(f"Datos con padding: {padded_data.hex().upper()}")
-        
-        # 2. Cifrar los datos
-        encrypted_data = bytes(self.auth.crypto_utils.aes_encrypt(
-            padded_data, 
-            self.auth.session_key, 
-            self.auth.session_iv
-        ))
-        print(f"Datos cifrados: {encrypted_data.hex().upper()}")
-        
-        # 3. Actualizar IV para CMAC
-        self.auth.session_iv = encrypted_data[-16:]
-        
-        # 4. Calcular CMAC sobre comando + datos cifrados
-        cmac_data = command_header + encrypted_data
-        cmac = self._calculate_cmac(cmac_data)
-        print(f"CMAC calculado: {cmac.hex().upper()}")
-        
-        return encrypted_data, cmac
     
     def _calculate_cmac(self, data: bytes) -> bytes:
         """Calcula CMAC para los datos dados"""
