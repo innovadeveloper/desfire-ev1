@@ -34,8 +34,8 @@ In addition, this project also contains a table of DESFire APDU response codes l
 ## Steps
 ```shell
 desfire_refactored_classes_2.py
-    - format card
-    - create and select multiple applications
+    - format card (3)
+    - create and select multiple applications (2)
 desfire_aes_keychange.py
     - change same key that authenticated
 desfire_aes_keychange_2.py

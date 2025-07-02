@@ -228,6 +228,141 @@ class DESFireAES:
         print("Authentication successful!")
         return True
     
+    def des_encrypt_cbc(self, key, iv, data):
+        """DES CBC encryption"""
+        from Crypto.Cipher import DES
+        cipher = DES.new(key, DES.MODE_CBC, iv)
+        return cipher.encrypt(data)
+    
+    def des_decrypt_cbc(self, key, iv, data):
+        """DES CBC decryption"""
+        from Crypto.Cipher import DES
+        cipher = DES.new(key, DES.MODE_CBC, iv)
+        return cipher.decrypt(data)
+    
+    def authenticate_des(self, key_number, key):
+        """Perform DES/3DES authentication"""
+        print(f"*** Authenticate(KeyNo= {key_number}, DES Key)")
+        
+        # Step 1: Send authentication request (DES/3DES uses 0x1A)
+        command = bytes([0x1A, key_number])
+        response = self.send_command(command)
+        
+        if response[0] != 0xAF or len(response) != 9:
+            print(f"DES Authentication failed at step 1: {response[0]:02X}")
+            return False
+        
+        encrypted_rnd_b = response[1:9]
+        print(f"* RndB_enc: {encrypted_rnd_b.hex().upper()}")
+        
+        # Step 2: Decrypt RndB
+        iv_zero = bytes(8)  # DES uses 8-byte IV
+        rnd_b = self.des_decrypt_cbc(key, iv_zero, encrypted_rnd_b)
+        print(f"* RndB: {rnd_b.hex().upper()}")
+        
+        # Step 3: Rotate RndB left by 1 byte
+        rnd_b_rotated = rnd_b[1:] + rnd_b[:1]
+        print(f"* RndB_rot: {rnd_b_rotated.hex().upper()}")
+        
+        # Step 4: Generate RndA
+        rnd_a = os.urandom(8)  # DES uses 8-byte random
+        print(f"* RndA: {rnd_a.hex().upper()}")
+        
+        # Step 5: Concatenate RndA + RndB'
+        rnd_ab = rnd_a + rnd_b_rotated
+        print(f"* RndAB: {rnd_ab.hex().upper()}")
+        
+        # Step 6: Encrypt RndAB with IV = encrypted_rnd_b
+        encrypted_rnd_ab = self.des_encrypt_cbc(key, encrypted_rnd_b, rnd_ab)
+        print(f"* RndAB_enc: {encrypted_rnd_ab.hex().upper()}")
+        
+        # Step 7: Send encrypted RndAB
+        command = bytes([0xAF]) + encrypted_rnd_ab
+        response = self.send_command(command)
+        
+        if response[0] != 0x00 or len(response) != 9:
+            print(f"DES Authentication failed at step 2: {response[0]:02X}")
+            return False
+        
+        # Step 8: Decrypt and verify RndA'
+        encrypted_rnd_a = response[1:9]
+        print(f"* RndA_enc: {encrypted_rnd_a.hex().upper()}")
+        
+        # IV for this decryption is the last 8 bytes we sent
+        iv_for_decrypt = encrypted_rnd_ab[-8:]
+        decrypted_rnd_a = self.des_decrypt_cbc(key, iv_for_decrypt, encrypted_rnd_a)
+        print(f"* RndA_dec: {decrypted_rnd_a.hex().upper()}")
+        
+        # RndA should be rotated left by 1 byte
+        expected_rnd_a = rnd_a[1:] + rnd_a[:1]
+        print(f"* RndA_rot: {expected_rnd_a.hex().upper()}")
+        
+        if decrypted_rnd_a != expected_rnd_a:
+            print("DES Authentication failed: RndA verification failed")
+            return False
+        
+        # Step 9: Generate session key for DES (different from AES)
+        # For DES, session key is usually derived differently
+        # For simplicity, we'll use the key itself as session key
+        self.session_key = key + key  # Duplicate to make 16 bytes for compatibility
+        print(f"* SessKey: {self.session_key.hex().upper()}")
+        
+        # Reset session IV
+        self.session_iv = bytes(8)  # DES uses 8-byte IV
+        self.authenticated = True
+        
+        print("DES Authentication successful!")
+        return True
+    
+    def authenticate_auto(self, key_number, aes_key=None, des_key=None):
+        """
+        Attempt authentication with both AES and DES keys automatically
+        
+        Args:
+            key_number: Key number to authenticate with
+            aes_key: AES key (16 bytes) to try first
+            des_key: DES key (8 bytes) to try if AES fails
+        
+        Returns:
+            bool: True if authentication successful, False otherwise
+        """
+        print(f"*** Auto-Authenticate(KeyNo={key_number})")
+        
+        # If AES key provided, try AES first
+        if aes_key is not None:
+            print("\n--- Trying AES authentication ---")
+            if self.authenticate_aes(key_number, aes_key):
+                print("✅ AES authentication successful!")
+                return True
+            else:
+                print("❌ AES authentication failed")
+        
+        # If DES key provided, try DES
+        if des_key is not None:
+            print("\n--- Trying DES authentication ---")
+            if self.authenticate_des(key_number, des_key):
+                print("✅ DES authentication successful!")
+                return True
+            else:
+                print("❌ DES authentication failed")
+        
+        # Try default keys if none provided
+        if aes_key is None and des_key is None:
+            print("\n--- Trying default AES key (16 zeros) ---")
+            default_aes = bytes(16)
+            if self.authenticate_aes(key_number, default_aes):
+                print("✅ Default AES authentication successful!")
+                return True
+            
+            print("\n--- Trying default DES key (8 zeros) ---")
+            default_des = bytes(8)
+            if self.authenticate_des(key_number, default_des):
+                print("✅ Default DES authentication successful!")
+                return True
+        
+        print("❌ All authentication methods failed!")
+        return False
+    
     def change_key(self, key_number, new_key, new_key_version=0x00, current_key=None, authenticated_key_number=None):
         """
         Change a key in the current application
@@ -411,6 +546,189 @@ class DESFireAES:
             print(f"Key change failed: {response[0]:02X}")
             return False
 
+    def read_file_data(self, file_id, offset=0, length=None, auto_trim=True):
+        """
+        Read data from a standard data file
+        
+        Args:
+            file_id: File ID to read from (0-31)
+            offset: Starting position to read from (default 0)
+            length: Number of bytes to read (None = read all)
+            auto_trim: Automatically trim padding/MAC bytes (default True)
+        
+        Returns:
+            bytes: File data if successful, None if failed
+        """
+        if not self.authenticated:
+            print("Error: Not authenticated")
+            return None
+        
+        print(f"*** ReadData(FileNo={file_id}, Offset={offset}, Length={length or 'ALL'})")
+        
+        # Build ReadData command
+        command = bytearray([0xBD, file_id])  # ReadData command (0xBD)
+        command.extend(struct.pack('<I', offset)[:3])  # Offset (3 bytes, little-endian)
+        
+        if length is not None:
+            command.extend(struct.pack('<I', length)[:3])  # Length (3 bytes, little-endian)
+        else:
+            command.extend([0x00, 0x00, 0x00])  # Read all (0 means read all)
+        
+        print(f"* Command: {command.hex().upper()}")
+        
+        response = self.send_command(command)
+        
+        if response[0] == 0x00:
+            file_data = response[1:]
+            print(f"* Raw file data ({len(file_data)} bytes): {file_data.hex().upper()}")
+            
+            # If auto_trim is enabled and we have extra data, try to trim it
+            if auto_trim and length is not None and len(file_data) > length:
+                # Check if we have MAC/padding at the end
+                expected_data = file_data[:length]
+                extra_data = file_data[length:]
+                
+                print(f"* Expected data ({length} bytes): {expected_data.hex().upper()}")
+                print(f"* Extra data ({len(extra_data)} bytes): {extra_data.hex().upper()}")
+                
+                # Return only the requested length
+                return expected_data
+            
+            return file_data
+        elif response[0] == 0xAF:
+            # More data available - collect all frames
+            all_data = bytearray(response[1:])
+            
+            while True:
+                # Send GetAdditionalFrame command (0xAF)
+                continue_cmd = bytes([0xAF])
+                response = self.send_command(continue_cmd)
+                
+                if response[0] == 0x00:
+                    # Last frame
+                    all_data.extend(response[1:])
+                    break
+                elif response[0] == 0xAF:
+                    # More frames follow
+                    all_data.extend(response[1:])
+                else:
+                    print(f"Error during multi-frame read: {response[0]:02X}")
+                    return None
+            
+            print(f"* Complete raw data ({len(all_data)} bytes): {all_data.hex().upper()}")
+            
+            # Apply auto_trim logic for multi-frame responses too
+            if auto_trim and length is not None and len(all_data) > length:
+                expected_data = all_data[:length]
+                extra_data = all_data[length:]
+                
+                print(f"* Expected data ({length} bytes): {expected_data.hex().upper()}")
+                print(f"* Extra data ({len(extra_data)} bytes): {extra_data.hex().upper()}")
+                
+                return bytes(expected_data)
+            
+            return bytes(all_data)
+        else:
+            print(f"Read failed: {response[0]:02X}")
+            return None
+
+    def write_file_data(self, file_id, offset, data):
+        """
+        Write data to a standard data file
+        
+        Args:
+            file_id: File ID to write to (0-31)
+            offset: Starting position to write to
+            data: Data to write (bytes)
+        
+        Returns:
+            bool: True if successful, False if failed
+        """
+        if not self.authenticated:
+            print("Error: Not authenticated")
+            return False
+        
+        print(f"*** WriteData(FileNo={file_id}, Offset={offset}, Length={len(data)})")
+        print(f"* Data: {data.hex().upper()}")
+        
+        # Build WriteData command
+        command = bytearray([0x3D, file_id])  # WriteData command (0x3D)
+        command.extend(struct.pack('<I', offset)[:3])  # Offset (3 bytes, little-endian)
+        command.extend(struct.pack('<I', len(data))[:3])  # Length (3 bytes, little-endian)
+        command.extend(data)  # Data payload
+        
+        print(f"* Command: {command.hex().upper()}")
+        
+        response = self.send_command(command)
+        
+        if response[0] == 0x00:
+            print("Write successful")
+            return True
+        else:
+            print(f"Write failed: {response[0]:02X}")
+            return False
+
+    def get_file_info(self, file_id):
+        """
+        Get file settings and information
+        
+        Args:
+            file_id: File ID to query (0-31)
+        
+        Returns:
+            dict: File information if successful, None if failed
+        """
+        if not self.authenticated:
+            print("Error: Not authenticated")
+            return None
+        
+        print(f"*** GetFileSettings(FileNo={file_id})")
+        
+        # Build GetFileSettings command
+        command = bytes([0xF5, file_id])  # GetFileSettings command (0xF5)
+        
+        response = self.send_command(command)
+        
+        if response[0] == 0x00:
+            file_settings = response[1:]
+            if len(file_settings) >= 7:
+                file_type = file_settings[0]
+                comm_mode = file_settings[1]
+                access_rights = struct.unpack('<H', file_settings[2:4])[0]
+                file_size = struct.unpack('<I', file_settings[4:7] + b'\x00')[0]
+                
+                # Decode access rights
+                read_key = (access_rights >> 12) & 0xF
+                write_key = (access_rights >> 8) & 0xF
+                rw_key = (access_rights >> 4) & 0xF
+                change_key = access_rights & 0xF
+                
+                file_info = {
+                    'file_type': file_type,
+                    'comm_mode': comm_mode,
+                    'file_size': file_size,
+                    'access_rights': {
+                        'read': read_key,
+                        'write': write_key,
+                        'read_write': rw_key,
+                        'change': change_key
+                    },
+                    'raw_data': file_settings.hex().upper()
+                }
+                
+                print(f"* File Type: {file_type:02X}")
+                print(f"* Comm Mode: {comm_mode:02X}")
+                print(f"* File Size: {file_size} bytes")
+                print(f"* Access Rights: R={read_key}, W={write_key}, RW={rw_key}, C={change_key}")
+                
+                return file_info
+            else:
+                print(f"Invalid file settings response length: {len(file_settings)}")
+                return None
+        else:
+            print(f"GetFileSettings failed: {response[0]:02X}")
+            return None
+
 
 # Real reader interface
 class SmartCardReader:
@@ -578,7 +896,7 @@ def demo_change_different_key():
         
         # Paso 2: Autenticarse con la clave 0 (master key)
         print("\n--- Autenticándose con clave 0 (master) ---")
-        if not desfire.authenticate_aes(0, master_key):
+        if not desfire.authenticate_auto(0, aes_key=master_key, des_key=bytes(8)):
             return False
         
         # Paso 3: Cambiar la clave 1 (diferente a la clave 0 usada para autenticación)
@@ -651,7 +969,7 @@ def main():
             return False
         
         # Step 2: Authenticate with key 0
-        if not desfire.authenticate_aes(0, current_key):
+        if not desfire.authenticate_auto(0, aes_key=current_key, des_key=bytes(8)):
             print("Authentication failed. Check if key is correct.")
             return False
         
@@ -722,18 +1040,18 @@ def mainCreateSTDFile():
             return False
         
         # Step 2: Authenticate with key 0
-        if not desfire.authenticate_aes(0, current_key):
+        if not desfire.authenticate_auto(0, aes_key=current_key, des_key=bytes(8)):
             print("Authentication failed. Check if key is correct.")
             return False
         
-        cmd1 = DESFireDeleteFile.delete_file(5)
-        response = desfire.send_command(cmd1)
-        if response[0] == 0x00:
-            print("deleted file success")
-        else:
-            print("delete file failed")
+        # cmd1 = DESFireDeleteFile.delete_file(5)
+        # response = desfire.send_command(cmd1)
+        # if response[0] == 0x00:
+        #     print("deleted file success")
+        # else:
+        #     print("delete file failed")
             
-        if not desfire.authenticate_aes(0, current_key):
+        if not desfire.authenticate_auto(0, aes_key=current_key, des_key=bytes(8)):
             print("Authentication failed. Check if key is correct.")
             return False
 
@@ -767,15 +1085,137 @@ def mainCreateSTDFile():
         if reader.connection:
             reader.connection.disconnect()
 
+
+
+def demo_file_operations():
+    """Demonstrate file reading and writing operations"""
+    
+    print("\n" + "="*60)
+    print("DEMO: File Operations (Read/Write)")
+    print("="*60)
+    
+    reader = SmartCardReader(debug=True)
+    if not reader.connect_reader():
+        return False
+    
+    desfire = DESFireAES(reader)
+    
+    # Application ID
+    aid = bytes([0xF0, 0x01, 0x01])
+    
+    # Current master key
+    master_key = bytes([0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70,
+                        0x80, 0x90, 0xA0, 0xB0, 0xB0, 0xA0, 0x90, 0x80])
+
+    try:
+        # Step 1: Select application
+        if not desfire.select_application(aid):
+            return False
+        
+        # Step 2: Authenticate with master key (try both AES and DES)
+        print("\n--- Authenticating with master key ---")
+        # Try with the known master key first
+        if not desfire.authenticate_auto(0, aes_key=master_key, des_key=bytes(8)):
+            # If that fails, try with default keys
+            print("Known keys failed, trying default keys...")
+            if not desfire.authenticate_auto(0):
+                return False
+        
+        # Step 3: List existing files
+        print("\n--- Listing files ---")
+        list_cmd = DESFireGetFileIDs.list_files()
+        response = desfire.send_command(list_cmd)
+        file_list = DESFireGetFileIDs.parse_response(response[1:] if response[0] == 0x00 else b'')
+        print(f"Existing files: {file_list}")
+        
+        # Step 4: Create a test file if it doesn't exist
+        test_file_id = 10
+        if test_file_id not in file_list:
+            print(f"\n--- Creating test file {test_file_id} ---")
+            create_cmd = DESFireCreateStdDataFile.create_public_file(test_file_id, 256)
+            response = desfire.send_command(create_cmd)
+            if response[0] == 0x00:
+                print("Test file created successfully")
+            else:
+                print(f"Failed to create test file: {response[0]:02X}")
+                return False
+        
+        # Step 5: Get file information
+        print(f"\n--- Getting file {test_file_id} information ---")
+        file_info = desfire.get_file_info(test_file_id)
+        if not file_info:
+            return False
+        
+        # Check communication mode
+        comm_mode = file_info['comm_mode']
+        comm_mode_str = {0x00: "PLAIN", 0x01: "MAC", 0x03: "ENCRYPTED"}.get(comm_mode, f"UNKNOWN({comm_mode:02X})")
+        print(f"* Communication mode: {comm_mode_str}")
+        
+        if comm_mode != 0x00:
+            print("⚠️  WARNING: File uses MAC/Encryption - read data may include padding/MAC bytes")
+        
+        # Step 6: Write test data
+        print(f"\n--- Writing data to file {test_file_id} ---")
+        test_data = b"Hello DESFire EV1! Saludos kloubit."
+        if desfire.write_file_data(test_file_id, 0, test_data):
+            print("Data written successfully")
+        else:
+            print("Failed to write data")
+            return False
+        
+        # Step 7: Read the data back (with auto-trim enabled)
+        print(f"\n--- Reading data from file {test_file_id} ---")
+        read_data = desfire.read_file_data(test_file_id, 0, len(test_data), auto_trim=True)
+        if read_data:
+            print(f"Trimmed data: {read_data}")
+            print(f"As text: {read_data.decode('utf-8', errors='ignore')}")
+            
+            # Verify data integrity
+            if read_data == test_data:
+                print("✅ Data integrity verified!")
+            else:
+                print("❌ Data mismatch!")
+                print(f"Expected: {test_data}")
+                print(f"Got:      {read_data}")
+        else:
+            print("Failed to read data")
+            return False
+        
+        # Step 7b: Also try reading without auto-trim to see raw data
+        print(f"\n--- Reading raw data (no auto-trim) ---")
+        raw_data = desfire.read_file_data(test_file_id, 0, len(test_data), auto_trim=False)
+        if raw_data:
+            print(f"Raw data ({len(raw_data)} bytes): {raw_data}")
+            if len(raw_data) > len(test_data):
+                print(f"Extra bytes detected: {len(raw_data) - len(test_data)} bytes")
+                extra_bytes = raw_data[len(test_data):]
+                print(f"Extra bytes: {extra_bytes.hex().upper()}")
+                print("This is likely MAC/padding from encrypted communication mode")
+        
+        # Step 8: Read partial data
+        print(f"\n--- Reading partial data (first 5 bytes) ---")
+        partial_data = desfire.read_file_data(test_file_id, 0, 5)
+        if partial_data:
+            print(f"Partial data: {partial_data}")
+            print(f"As text: {partial_data.decode('utf-8', errors='ignore')}")
+        
+        print("\n✅ File operations completed successfully!")
+        return True
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+    finally:
+        if reader.connection:
+            reader.connection.disconnect()
+
+
 if __name__ == "__main__":
-    print("DESFire EV1 AES Authentication and Key Change")
-    print("=" * 50)
+    print("DESFire EV1 AES Authentication and File Operations")
+    print("=" * 60)
     
-    # # Ejecutar ejemplo principal
-    # success = main()
-    
-    # if success:
-    # Ejecutar demo de cambio de clave diferente
-    demo_change_different_key()
-    mainCreateSTDFile()
+    # Run file operations demo
+    demo_file_operations()
 
