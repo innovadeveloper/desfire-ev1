@@ -34,8 +34,8 @@ In addition, this project also contains a table of DESFire APDU response codes l
 ## Steps
 ```shell
 desfire_refactored_classes_2.py
-    - format card (3)
-    - create and select multiple applications (2)
+    - format card (3) . Solo formatea la tarjeta y se autentica con la clave MASTERpor defecto "00000000000000000000000000000000"
+    - create and select multiple applications (2) . 4 aplicaciones 
 desfire_aes_keychange.py
     - change same key that authenticated
 desfire_aes_keychange_2.py
