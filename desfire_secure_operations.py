@@ -220,12 +220,10 @@ class DESFireSecureOperations:
         """
         self.log(f"Intentando descubrir valor de clave #{key_number}")
         
-        # Claves comunes para probar
+        # Claves comunes para probar (prioritizando clave por defecto)
         common_keys = [
-            bytes(16),  # 16 zeros
+            bytes(16),  # 16 zeros - clave por defecto AES
             bytes([0xFF] * 16),  # 16 FFs
-            bytes([0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70,
-                   0x80, 0x90, 0xA0, 0xB0, 0xB0, 0xA0, 0x90, 0x80]),  # Master key pattern
             bytes([0x01] * 16),  # 16 ones
             bytes([i % 256 for i in range(16)]),  # 0x00, 0x01, 0x02...0x0F
         ]
@@ -297,22 +295,13 @@ class DESFireSecureOperations:
         # Si no se proporciona clave, usar la clave conocida
         if key_data is None:
             if role == 'master':
-                # Clave maestra del desfire_aes_keychange_2.py
-                key_data = bytes([0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70,
-                                  0x80, 0x90, 0xA0, 0xB0, 0xB0, 0xA0, 0x90, 0x80])
+                # Clave maestra AES por defecto (16 zeros)
+                key_data = bytes(16)  # 00000000000000000000000000000000
             elif role in ['read', 'write']:
-                # Para claves de lectura/escritura
-                if key_number == 2:
-                    # Clave #2 - según desfire_aes_keychange_2.py, debería ser zeros
-                    key_data = bytes(16)  # 00000000000000000000000000000000
-                elif key_number == 1:
-                    # Clave #1 - según desfire_aes_keychange_2.py, se intentó configurar como zeros
-                    key_data = bytes(16)  # 00000000000000000000000000000000
-                else:
-                    # Otras claves - usar zeros por defecto
-                    key_data = bytes(16)
+                # Para claves de lectura/escritura - usar clave por defecto
+                key_data = bytes(16)  # 00000000000000000000000000000000
             else:
-                # Otras claves
+                # Otras claves - usar zeros por defecto
                 key_data = bytes(16)
         
         self.log(f"Autenticando como '{role}' con clave #{key_number}")
@@ -337,6 +326,92 @@ class DESFireSecureOperations:
         else:
             self.log(f"ERROR seleccionando aplicación: {response[0]:02X}")
             return False
+    
+    def create_application(self, aid, num_keys=3):
+        """
+        Crear aplicación DESFire con número específico de claves AES
+        
+        Args:
+            aid (bytes): Application ID (3 bytes)
+            num_keys (int): Número de claves AES (1-14)
+            
+        Returns:
+            bool: True si creación exitosa
+        """
+        self.log(f"Creando aplicación {aid.hex().upper()} con {num_keys} claves AES")
+        
+        # Debe estar autenticado como PICC master key
+        if not self.authenticated or self.auth_key_number != 0:
+            self.log("ERROR: Debe estar autenticado como PICC master key")
+            return False
+        
+        # Comando CreateApplication
+        # 0xCA + AID(3) + KeySettings(1) + NumKeys(1)
+        key_settings = 0x0F  # Cambio de master key permitido con autenticación
+        
+        command = bytes([0xCA]) + aid + bytes([key_settings, num_keys])
+        response = self.send_command(command)
+        
+        if response[0] == 0x00:
+            self.log(f"Aplicación {aid.hex().upper()} creada exitosamente")
+            return True
+        else:
+            self.log(f"ERROR creando aplicación: {response[0]:02X}")
+            return False
+    
+    def authenticate_picc_master(self):
+        """Autenticar con PICC master key (clave por defecto)"""
+        self.log("Autenticando con PICC master key...")
+        
+        # Seleccionar PICC master application (0x000000)
+        picc_aid = bytes([0x00, 0x00, 0x00])
+        command = bytes([0x5A]) + picc_aid
+        response = self.send_command(command)
+        
+        if response[0] != 0x00:
+            self.log(f"ERROR seleccionando PICC master: {response[0]:02X}")
+            return False
+        
+        # Autenticar con clave por defecto
+        picc_master_key = bytes(16)  # 16 zeros
+        return self.authenticate_aes(0, picc_master_key)
+    
+    def setup_application_keys(self, aid):
+        """
+        Configurar las 3 claves de la aplicación con valores por defecto
+        
+        Args:
+            aid (bytes): Application ID
+            
+        Returns:
+            bool: True si configuración exitosa
+        """
+        self.log("Configurando claves de aplicación...")
+        
+        # Seleccionar aplicación
+        if not self.select_application(aid):
+            return False
+        
+        # Autenticar como master de aplicación con clave por defecto
+        app_master_key = bytes(16)  # 16 zeros
+        if not self.authenticate_aes(0, app_master_key):
+            self.log("ERROR: No se pudo autenticar como master de aplicación")
+            return False
+        
+        # Configurar clave #1 (lectura)
+        read_key = bytes(16)  # 16 zeros
+        if not self.create_key(1, read_key):
+            self.log("ERROR: No se pudo crear clave de lectura")
+            return False
+        
+        # Configurar clave #2 (escritura)
+        write_key = bytes(16)  # 16 zeros
+        if not self.create_key(2, write_key):
+            self.log("ERROR: No se pudo crear clave de escritura")
+            return False
+        
+        self.log("Claves de aplicación configuradas: Master(0), Read(1), Write(2)")
+        return True
     
     # =============================================================================
     # GESTIÓN SEGURA DE ARCHIVOS
@@ -713,9 +788,9 @@ class DESFireSecureOperations:
                 if not self.create_key(key_num, null_key):
                     self.log(f"Advertencia: No se pudo eliminar clave #{key_num}")
         
-        # Crear claves necesarias para esquema de 3 claves
+        # Crear claves necesarias para esquema de 3 claves (todas por defecto)
         read_key = bytes(16)    # Clave por defecto para lectura
-        write_key = bytes([0x01] * 16)  # Clave simple para escritura
+        write_key = bytes(16)   # Clave por defecto para escritura
         
         # Crear clave #1 (lectura)
         if not self.create_key(1, read_key):
@@ -732,7 +807,8 @@ class DESFireSecureOperations:
 
     def setup_secure_application(self, aid):
         """
-        Configurar aplicación con estructura de seguridad completa
+        Configurar aplicación existente con fichero STD seguro
+        Usa clave AES por defecto (16 zeros) para autenticación
         
         Args:
             aid (bytes): Application ID (3 bytes)
@@ -740,67 +816,81 @@ class DESFireSecureOperations:
         Returns:
             bool: True si configuración exitosa
         """
-        self.log("Configurando aplicación segura...")
+        self.log(f"Configurando aplicación segura {aid.hex().upper()} con clave AES por defecto...")
         
-        # Seleccionar aplicación
+        # Seleccionar aplicación existente
         if not self.select_application(aid):
+            self.log("ERROR: No se pudo seleccionar aplicación existente")
             return False
         
-        # Verificar qué claves existen
+        # Autenticarse como master con clave AES por defecto
+        self.log("Autenticando con clave AES por defecto...")
+        master_key = bytes(16)  # 16 zeros - clave AES por defecto
+        if not self.authenticate_aes(0, master_key):
+            self.log("ERROR: No se pudo autenticar con clave AES por defecto")
+            return False
+        
+        # Verificar qué claves existen después de autenticarse
         self.log("Verificando claves existentes...")
         existing_keys = []
         for key_num in range(4):  # Verificar claves 0-3
             if self.check_key_exists(key_num):
                 existing_keys.append(key_num)
         
-        self.log(f"Claves existentes: {existing_keys}")
-        
-        if 0 not in existing_keys:
-            self.log("ERROR: Clave master (0) no existe")
-            return False
-        
-        # Autenticarse como master para configuración inicial
-        if not self.authenticate_with_role('master'):
-            self.log("ERROR: No se pudo autenticar como master")
-            return False
-        
-        # Usar esquema simplificado basado en las claves que existen
         self.log(f"Claves disponibles: {existing_keys}")
         
-        # Descubrir valor de clave #2 si existe
-        self.discovered_keys = {}
-        if 2 in existing_keys:
-            self.log("Descubriendo valor de clave #2...")
-            key2_value = self.discover_key_value(2)
-            if key2_value:
-                self.discovered_keys[2] = key2_value
-                self.log(f"Clave #2 descubierta: {key2_value.hex().upper()}")
+        # Determinar esquema de claves basado en lo que está disponible
+        if len(existing_keys) == 1 and 0 in existing_keys:
+            self.log("Aplicación configurada con 1 clave (solo master)")
+            self.log("Configurando archivo con: Master=0, Read=0, Write=0")
+        elif len(existing_keys) >= 3:
+            self.log("Esquema de 3 claves disponible: Master(0), Read(1), Write(2)")
+            self.log("Configurando archivo con: Master=0, Read=1, Write=2")
+        elif len(existing_keys) >= 2:
+            self.log("Esquema de 2 claves disponible: Master(0), Clave(2)")
+            self.log("Configurando archivo con: Master=0, Read=2, Write=2")
+        else:
+            self.log("Usando esquema simplificado: solo clave master")
+            self.log("Configurando archivo con: Master=0, Read=0, Write=0")
+        
+        self.existing_keys = existing_keys
+        
+        # Verificar archivos existentes (puede fallar si no tienes permisos)
+        try:
+            existing_files = self.get_file_ids()
+            if existing_files:
+                self.log(f"Archivos existentes encontrados: {existing_files}")
+                for file_id in existing_files:
+                    self.log(f"Eliminando archivo existente {file_id}")
+                    self.delete_file(file_id)
             else:
-                self.log("No se pudo descubrir clave #2, usando valor por defecto")
-                self.discovered_keys[2] = bytes(16)
+                self.log("No hay archivos existentes")
+        except Exception as e:
+            self.log(f"No se pudo verificar archivos existentes (normal): {e}")
+            self.log("Continuando con creación de archivo...")
         
-        # Reautenticarse como master después del descubrimiento
-        if not self.authenticate_with_role('master'):
-            self.log("ERROR: No se pudo reautenticar como master")
-            return False
-        
-        # Eliminar archivos existentes para empezar limpio
-        existing_files = self.get_file_ids()
-        for file_id in existing_files:
-            self.log(f"Eliminando archivo existente {file_id}")
-            self.delete_file(file_id)
-        
-        # Crear archivo seguro usando claves existentes
+        # Crear archivo seguro usando el esquema de claves disponible
         secure_file_id = 11
         
-        if len(existing_keys) >= 2:
-            # Usar clave #0 para cambios, #2 para lectura y escritura
-            read_key, write_key, change_key = 2, 2, 0
-            self.log(f"Creando archivo con esquema: R=Key{read_key}, W=Key{write_key}, C=Key{change_key}")
-        else:
-            # Solo master key disponible
+        # Determinar esquema de claves basado en las claves disponibles
+        if len(existing_keys) == 1 and 0 in existing_keys:
+            # Solo clave master disponible
             read_key, write_key, change_key = 0, 0, 0
-            self.log("Usando solo master key para todos los permisos")
+            self.log(f"Creando archivo STD seguro con clave única: R=Key{read_key}, W=Key{write_key}, C=Key{change_key}")
+            self.log("Usando clave master AES por defecto para todos los permisos")
+        elif len(existing_keys) >= 3:
+            # Esquema completo de 3 claves
+            read_key, write_key, change_key = 1, 2, 0
+            self.log(f"Creando archivo STD seguro con 3 claves: R=Key{read_key}, W=Key{write_key}, C=Key{change_key}")
+        elif len(existing_keys) >= 2:
+            # Esquema de 2 claves
+            read_key, write_key, change_key = 2, 2, 0
+            self.log(f"Creando archivo STD seguro con 2 claves: R=Key{read_key}, W=Key{write_key}, C=Key{change_key}")
+        else:
+            # Fallback - solo master
+            read_key, write_key, change_key = 0, 0, 0
+            self.log(f"Creando archivo STD seguro simplificado: R=Key{read_key}, W=Key{write_key}, C=Key{change_key}")
+            self.log("Usando clave master para todos los permisos")
         
         if not self.create_secure_file(
             file_id=secure_file_id,
@@ -812,15 +902,21 @@ class DESFireSecureOperations:
             return False
         
         self.log("Aplicación segura configurada correctamente")
+        self.log(f"Fichero STD seguro #{secure_file_id} creado con comunicación ENCRYPTED")
+        self.log(f"Esquema de claves: Master(0), Read({read_key}), Write({write_key})")
+        self.log("Todas las claves usan valor AES por defecto (16 zeros)")
+        
         # Guardar claves existentes para el demo
         self.existing_keys = existing_keys
         return True
 
 
 def demo_secure_operations():
-    """Demostración de operaciones seguras con archivos encriptados"""
-    print("Demo: Operaciones Seguras DESFire EV1")
-    print("=" * 50)
+    """Demostración de operaciones seguras con archivos encriptados usando clave AES por defecto"""
+    print("Demo: Operaciones Seguras DESFire EV1 con Clave AES por Defecto")
+    print("Aplicación: 0xF0, 0x01, 0x01")
+    print("Clave Maestra: 16 zeros (AES por defecto)")
+    print("=" * 60)
     
     desfire = DESFireSecureOperations(debug=True)
     
@@ -829,8 +925,10 @@ def demo_secure_operations():
         if not desfire.connect_reader():
             return False
         
-        # Configurar aplicación segura
+        # Configurar aplicación segura específica 0xF0, 0x01, 0x01
         test_aid = bytes([0xF0, 0x01, 0x01])
+        print(f"\nConfigurando aplicación: {test_aid.hex().upper()}")
+        print("Creando fichero STD seguro con 3 claves...")
         if not desfire.setup_secure_application(test_aid):
             return False
         
@@ -913,9 +1011,11 @@ def demo_secure_operations():
         else:
             print("No se pudo obtener información del archivo")
         
-        print("\n" + "="*50)
-        print("DEMO COMPLETADO - Operaciones seguras funcionando")
-        print("="*50)
+        print("\n" + "="*60)
+        print("DEMO COMPLETADO - Operaciones seguras con clave AES por defecto")
+        print("Aplicación 0xF0, 0x01, 0x01 configurada correctamente")
+        print("Fichero STD seguro creado con 3 claves (todas por defecto)")
+        print("="*60)
         
         return True
         
