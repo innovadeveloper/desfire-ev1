@@ -24,3 +24,21 @@ Filename : desfire_aes_keychange.py
 
 ## LECTURA Y ESCRITURA 
 Filename : desfire_secure_operations.py
+
+
+## Troubleshooting
+
+
+```
+
+Autenticación DES exitosa con clave #0
+Autenticación DES exitosa
+Creando aplicación AID: 010000
+TX: 90 CA 00 00 05 01 00 00 0F 83
+RX: Sin datos, SW: 91 7E
+ERROR creando aplicación: 7E
+Desconectado del lector
+
+⏺ El error 0x7E significa "Length Error" - hay un problema con la longitud de los datos en el comando CreateApplication. El problema está en el parámetro
+   num_keys: 0x83 que especifica 3 claves AES, pero después de una autenticación DES, la tarjeta puede no soportar crear aplicaciones AES.
+```
