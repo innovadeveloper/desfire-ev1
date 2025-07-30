@@ -1056,6 +1056,16 @@ class DESFireChangeKey:
             result = bytes(encrypted)
             print(f"Criptograma cifrado ({len(result)} bytes): {result.hex().upper()}")
             
+            # Actualizar IV con los últimos bytes del ciphertext (como en Java línea 392)
+            if len(self.auth.session_key) == 8:
+                # DES: IV de 8 bytes
+                self.auth.current_iv = result[-8:]
+            else:
+                # AES: IV de 16 bytes
+                self.auth.current_iv = result[-16:]
+            
+            print(f"IV actualizado: {self.auth.current_iv.hex().upper()}")
+            
             return result
             
         except Exception as e:
@@ -1570,48 +1580,24 @@ class DESFireChangeKey:
         print(f"Nueva clave DES: {new_des_key.hex().upper()}")
         print(f"Versión de clave: 0x{key_version:02X}")
         
-        # Método 1: Estructura simple (sin XOR)
-        print("\n🔄 Método 1: Estructura simple sin XOR...")
+        # Método 1: Implementación Java correcta
+        print("\n🔄 Método 1: Implementación Java correcta...")
         try:
-            cryptogram_data = self._prepare_change_key_cryptogram_aes_to_des_correct(
+            cryptogram_data = self._prepare_change_key_cryptogram_aes_to_des(
                 new_des_key, key_version, key_no
             )
             
             encrypted_cryptogram = self._encrypt_cryptogram(cryptogram_data)
             
             if encrypted_cryptogram and self._send_change_key_command_to_des(key_no, encrypted_cryptogram):
-                print("✅ ¡Método 1 exitoso!")
+                print("✅ ¡Cambio de clave exitoso con implementación Java!")
                 return True
             else:
-                print("❌ Método 1 falló")
+                print("❌ Cambio de clave falló")
         except Exception as e:
-            print(f"❌ Método 1 error: {e}")
+            print(f"❌ Error en cambio de clave: {e}")
         
-        # Método 2: Estructura expandida
-        print("\n🔄 Método 2: Estructura expandida...")
-        try:
-            cryptogram_data = self._prepare_change_key_cryptogram_aes_to_des_alternative(
-                new_des_key, key_version, key_no
-            )
-            
-            encrypted_cryptogram = self._encrypt_cryptogram(cryptogram_data)
-            
-            if encrypted_cryptogram and self._send_change_key_command_to_des(key_no, encrypted_cryptogram):
-                print("✅ ¡Método 2 exitoso!")
-                return True
-            else:
-                print("❌ Método 2 falló")
-        except Exception as e:
-            print(f"❌ Método 2 error: {e}")
-        
-        # Método 3: Usando comando ISO 7816 directo
-        print("\n🔄 Método 3: Comando ISO directo...")
-        try:
-            return self._try_iso_change_key(key_no, new_des_key, key_version)
-        except Exception as e:
-            print(f"❌ Método 3 error: {e}")
-        
-        print("❌ Todos los métodos fallaron")
+        print("❌ Cambio de clave AES→DES falló")
         return False
 
     def _try_iso_change_key(self, key_no: int, new_des_key: bytes, key_version: int) -> bool:
