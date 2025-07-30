@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRC32 en MIFARE DESFire: Verificación de Integridad</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .title {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 2em;
+            font-weight: bold;
+        }
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 40px;
+            font-size: 1.2em;
+        }
+        .comparison-container {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        .analogy-section, .desfire-section {
+            flex: 1;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            border: 2px solid #e9ecef;
+        }
+        .analogy-section {
+            border-color: #28a745;
+        }
+        .desfire-section {
+            border-color: #007bff;
+        }
+        .section-title {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .analogy-section .section-title {
+            color: #28a745;
+        }
+        .desfire-section .section-title {
+            color: #007bff;
+        }
+        .process-step {
+            background: white;
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .analogy-section .process-step {
+            border-left-color: #28a745;
+        }
+        .desfire-section .process-step {
+            border-left-color: #007bff;
+        }
+        .step-number {
+            background: #6c757d;
+            color: white;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 10px;
+            font-size: 0.9em;
+        }
+        .analogy-section .step-number {
+            background: #28a745;
+        }
+        .desfire-section .step-number {
+            background: #007bff;
+        }
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+        .highlight {
+            background: #ffeaa7;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        .security-section {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        .security-title {
+            color: #856404;
+            font-size: 1.4em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .security-points {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .security-point {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #ffc107;
+        }
+        .interactive-demo {
+            background: #e8f4fd;
+            border: 2px solid #007bff;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+            text-align: center;
+        }
+        .demo-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 1.1em;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s ease;
+        }
+        .demo-button:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+        .demo-result {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+        .attack-demo {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .attack-title {
+            color: #721c24;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        @media (max-width: 768px) {
+            .comparison-container {
+                flex-direction: column;
+            }
+            .security-points {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">🛡️ CRC32 en MIFARE DESFire</h1>
+        <p class="subtitle">Verificación de Integridad en el Comando ChangeKey</p>
+        
+        <div class="comparison-container">
+            <!-- Analogía con Checksum -->
+            <div class="analogy-section">
+                <h2 class="section-title">📁 Analogía: Descarga de Archivos</h2>
+                
+                <div class="process-step">
+                    <span class="step-number">1</span>
+                    <strong>Descargas un archivo</strong><br>
+                    <code>ubuntu-22.04.iso (2.8 GB)</code>
+                </div>
+                
+                <div class="process-step">
+                    <span class="step-number">2</span>
+                    <strong>Checksum proporcionado</strong><br>
+                    <code class="highlight">SHA256: a4acfda10b18da50e2ec50ccaf860d7f...</code>
+                </div>
+                
+                <div class="process-step">
+                    <span class="step-number">3</span>
+                    <strong>Calculas el checksum</strong><br>
+                    <code>$ sha256sum ubuntu-22.04.iso</code>
+                </div>
+                
+                <div class="process-step">
+                    <span class="step-number">4</span>
+                    <strong>Comparas los valores</strong><br>
+                    ✅ <span style="color: #28a745;">Coinciden = Archivo íntegro</span><br>
+                    ❌ <span style="color: #dc3545;">No coinciden = Archivo dañado</span>
+                </div>
+            </div>
+            
+            <!-- MIFARE DESFire ChangeKey -->
+            <div class="desfire-section">
+                <h2 class="section-title">🔐 MIFARE DESFire ChangeKey</h2>
+                
+                <div class="process-step">
+                    <span class="step-number">1</span>
+                    <strong>Preparar nueva clave</strong><br>
+                    <code>new_key + key_version</code>
+                </div>
+                
+                <div class="process-step">
+                    <span class="step-number">2</span>
+                    <strong>Calcular CRC32</strong><br>
+                    <code class="highlight">CRC32(comando + key_number + new_key + version)</code>
+                </div>
+                
+                <div class="process-step">
+                    <span class="step-number">3</span>
+                    <strong>Crear cryptogram</strong><br>
+                    <code>encrypt(new_key + version + CRC32 + padding)</code>
+                </div>
+                
+                <div class="process-step">
+                    <span class="step-number">4</span>
+                    <strong>Verificación en la tarjeta</strong><br>
+                    ✅ <span style="color: #007bff;">CRC válido = Acepta cambio</span><br>
+                    ❌ <span style="color: #dc3545;">CRC inválido = Rechaza cambio</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="security-section">
+            <h3 class="security-title">🛡️ ¿Por qué es tan importante el CRC32?</h3>
+            <div class="security-points">
+                <div class="security-point">
+                    <strong>🔍 Detección de Errores</strong><br>
+                    Detecta si los datos se corrompieron durante la transmisión por interferencias o errores de comunicación.
+                </div>
+                <div class="security-point">
+                    <strong>🚫 Protección contra Ataques</strong><br>
+                    Sin conocer la clave de cifrado, es prácticamente imposible generar un CRC32 válido para datos modificados.
+                </div>
+                <div class="security-point">
+                    <strong>⚡ Verificación Rápida</strong><br>
+                    El CRC32 permite una verificación rápida antes de procesar el cambio de clave completo.
+                </div>
+                <div class="security-point">
+                    <strong>🔒 Integridad Criptográfica</strong><br>
+                    Garantiza que solo cryptograms legítimos y no modificados sean aceptados por la tarjeta.
+                </div>
+            </div>
+        </div>
+        
+        <div class="interactive-demo">
+            <h3 style="color: #007bff; margin-bottom: 20px;">🧪 Demostración Interactiva</h3>
+            <p>Simula cómo funciona la verificación de CRC32:</p>
+            
+            <button class="demo-button" onclick="simulateValidCRC()">✅ Simular CRC Válido</button>
+            <button class="demo-button" onclick="simulateInvalidCRC()">❌ Simular CRC Inválido</button>
+            <button class="demo-button" onclick="simulateAttack()">🔥 Simular Ataque</button>
+            
+            <div class="demo-result" id="demoResult" style="display: none;">
+                <!-- Los resultados aparecerán aquí -->
+            </div>
+        </div>
+        
+        <div class="code-block" style="margin-top: 30px;">
+<strong>// Ejemplo simplificado del proceso en DESFire</strong>
+<span style="color: #4ade80;">function</span> <span style="color: #fbbf24;">changeKey</span>(newKey, keyVersion) {
+    <span style="color: #60a5fa;">// 1. Preparar datos</span>
+    <span style="color: #4ade80;">const</span> command = <span style="color: #fbbf24;">0xC4</span>;
+    <span style="color: #4ade80;">const</span> keyNumber = <span style="color: #fbbf24;">0x00</span>;
+    
+    <span style="color: #60a5fa;">// 2. Calcular CRC32 ANTES de cifrar</span>
+    <span style="color: #4ade80;">const</span> dataForCRC = [command, keyNumber, ...newKey, keyVersion];
+    <span style="color: #4ade80;">const</span> crc32 = <span style="color: #fbbf24;">calculateCRC32</span>(dataForCRC);
+    
+    <span style="color: #60a5fa;">// 3. Crear cryptogram</span>
+    <span style="color: #4ade80;">const</span> cryptogram = [...newKey, keyVersion, ...crc32, ...padding];
+    <span style="color: #4ade80;">const</span> encryptedData = <span style="color: #fbbf24;">encrypt</span>(cryptogram, sessionKey);
+    
+    <span style="color: #60a5fa;">// 4. Enviar a la tarjeta</span>
+    <span style="color: #fbbf24;">sendCommand</span>([command, keyNumber, ...encryptedData]);
+}
+        </div>
+    </div>
+
+    <script>
+        function simulateValidCRC() {
+            const result = document.getElementById('demoResult');
+            result.style.display = 'block';
+            result.innerHTML = `
+                <h4 style="color: #28a745;">✅ CRC32 Válido - Cambio de Clave Aceptado</h4>
+                <div style="text-align: left; margin-top: 15px;">
+                    <strong>Datos originales:</strong><br>
+                    <code style="background: #e8f5e9; padding: 5px;">new_key: 0x0102030405060708090A0B0C0D0E0F10</code><br>
+                    <code style="background: #e8f5e9; padding: 5px;">version: 0x01</code><br><br>
+                    
+                    <strong>CRC32 calculado:</strong><br>
+                    <code style="background: #e8f5e9; padding: 5px;">0x12345678</code><br><br>
+                    
+                    <strong>Resultado:</strong><br>
+                    <span style="color: #28a745;">🔐 La tarjeta verifica el CRC32, coincide con los datos, y acepta el cambio de clave.</span>
+                </div>
+            `;
+        }
+
+        function simulateInvalidCRC() {
+            const result = document.getElementById('demoResult');
+            result.style.display = 'block';
+            result.innerHTML = `
+                <h4 style="color: #dc3545;">❌ CRC32 Inválido - Cambio Rechazado</h4>
+                <div style="text-align: left; margin-top: 15px;">
+                    <strong>Datos recibidos:</strong><br>
+                    <code style="background: #f8d7da; padding: 5px;">new_key: 0x0102030405060708090A0B0C0D0E0F10</code><br>
+                    <code style="background: #f8d7da; padding: 5px;">version: 0x01</code><br>
+                    <code style="background: #f8d7da; padding: 5px;">CRC32: 0x12345678</code><br><br>
+                    
+                    <strong>CRC32 calculado por la tarjeta:</strong><br>
+                    <code style="background: #f8d7da; padding: 5px;">0x87654321</code> (No coincide!)<br><br>
+                    
+                    <strong>Resultado:</strong><br>
+                    <span style="color: #dc3545;">🚫 La tarjeta detecta corrupción de datos y rechaza el cambio de clave.</span>
+                </div>
+            `;
+        }
+
+        function simulateAttack() {
+            const result = document.getElementById('demoResult');
+            result.style.display = 'block';
+            result.innerHTML = `
+                <h4 style="color: #dc3545;">🔥 Intento de Ataque Bloqueado</h4>
+                <div style="text-align: left; margin-top: 15px;">
+                    <strong>Escenario:</strong> Un atacante intercepta el comando ChangeKey y modifica la nueva clave.<br><br>
+                    
+                    <strong>Datos originales (cifrados):</strong><br>
+                    <code style="background: #e8f5e9; padding: 5px;">0xA1B2C3D4E5F6...</code><br><br>
+                    
+                    <strong>Datos modificados por atacante:</strong><br>
+                    <code style="background: #f8d7da; padding: 5px;">0xA1B2C3D4E5F7...</code> (1 bit cambiado)<br><br>
+                    
+                    <strong>Al desencriptar en la tarjeta:</strong><br>
+                    • CRC32 en el mensaje: <code>0x12345678</code><br>
+                    • CRC32 calculado: <code>0xABCDEF00</code><br><br>
+                    
+                    <strong>Resultado:</strong><br>
+                    <span style="color: #dc3545;">🛡️ El CRC32 no coincide, la modificación es detectada y el ataque es bloqueado automáticamente.</span>
+                </div>
+                <div class="attack-demo">
+                    <div class="attack-title">💡 ¿Por qué funciona esta protección?</div>
+                    Sin conocer la clave de sesión para desencriptar y re-encriptar correctamente, es matemáticamente inviable para un atacante:
+                    <ul style="text-align: left; margin-top: 10px;">
+                        <li>Modificar los datos cifrados de forma que el CRC32 siga siendo válido</li>
+                        <li>Calcular un CRC32 correcto para datos modificados sin conocer el contenido</li>
+                        <li>Generar un cryptogram válido con una clave de su elección</li>
+                    </ul>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

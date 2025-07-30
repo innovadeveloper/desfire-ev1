@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DESFire Cryptogram Construction Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+
+        input[type="text"] {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 5px;
+            background: rgba(255,255,255,0.9);
+            color: #333;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            width: 200px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background: #28a745;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #218838;
+        }
+
+        .step-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .step-btn {
+            background: #007bff;
+            font-size: 0.9em;
+        }
+
+        .step-btn:hover {
+            background: #0056b3;
+        }
+
+        .step-btn.active {
+            background: #ffc107;
+            color: #000;
+        }
+
+        .visualization {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .step-title {
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            text-align: center;
+            color: #ffc107;
+        }
+
+        .step-description {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .byte-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        .byte-cube {
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            font-weight: bold;
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.3);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .byte-cube:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+
+        .byte-cube::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 10px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .byte-cube:hover::after {
+            opacity: 1;
+        }
+
+        /* Color schemes for different data types */
+        .new-key { background: #28a745; color: white; }
+        .current-key { background: #6c757d; color: white; }
+        .xor-result { background: #17a2b8; color: white; }
+        .version { background: #ffc107; color: black; }
+        .crc-crypto { background: #dc3545; color: white; }
+        .crc-new-key { background: #fd7e14; color: white; }
+        .command { background: #6f42c1; color: white; }
+        .key-number { background: #e83e8c; color: white; }
+        .padding { background: #495057; color: white; }
+        .encrypted { background: linear-gradient(45deg, #ff6b6b, #4ecdc4); color: white; }
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9em;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        .calculation-box {
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+        }
+
+        .calculation-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #ffc107;
+        }
+
+        .arrow {
+            text-align: center;
+            font-size: 2em;
+            margin: 10px 0;
+            color: #ffc107;
+        }
+
+        @media (max-width: 768px) {
+            .byte-cube {
+                width: 25px;
+                height: 25px;
+                font-size: 8px;
+            }
+            
+            .controls {
+                flex-direction: column;
+            }
+            
+            input[type="text"] {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 DESFire Cryptogram Visualizer</h1>
+            <p>Interactive visualization of AES key change cryptogram construction</p>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>New Key (32 hex chars):</label>
+                <input type="text" id="newKey" value="00102030405060708090A0B0B0A09080" maxlength="32">
+            </div>
+            <div class="control-group">
+                <label>Current Key (32 hex chars):</label>
+                <input type="text" id="currentKey" value="00000000000000000000000000000000" maxlength="32">
+            </div>
+            <div class="control-group">
+                <label>Key Number:</label>
+                <input type="text" id="keyNumber" value="01" maxlength="2">
+            </div>
+            <div class="control-group">
+                <label>Key Version:</label>
+                <input type="text" id="keyVersion" value="10" maxlength="2">
+            </div>
+            <div class="control-group">
+                <button onclick="generateVisualization()">Generate Visualization</button>
+            </div>
+        </div>
+
+        <div class="step-controls">
+            <button class="step-btn active" onclick="showStep(0)">1. Initial Keys</button>
+            <button class="step-btn" onclick="showStep(1)">2. XOR Operation</button>
+            <button class="step-btn" onclick="showStep(2)">3. CRC New Key</button>
+            <button class="step-btn" onclick="showStep(3)">4. Crypto Data</button>
+            <button class="step-btn" onclick="showStep(4)">5. CRC Crypto</button>
+            <button class="step-btn" onclick="showStep(5)">6. Cryptogram</button>
+            <button class="step-btn" onclick="showStep(6)">7. Padding</button>
+            <button class="step-btn" onclick="showStep(7)">8. Final Result</button>
+        </div>
+
+        <div id="visualization"></div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color new-key"></div>
+                <span>New Key</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color current-key"></div>
+                <span>Current Key</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color xor-result"></div>
+                <span>XOR Result</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color version"></div>
+                <span>Version</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color command"></div>
+                <span>Command</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color key-number"></div>
+                <span>Key Number</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color crc-crypto"></div>
+                <span>CRC Crypto</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color crc-new-key"></div>
+                <span>CRC New Key</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color padding"></div>
+                <span>Padding</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color encrypted"></div>
+                <span>Encrypted</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStep = 0;
+        let cryptogramData = {};
+
+        // CRC32 calculation (DESFire polynomial)
+        function crc32(data) {
+            const poly = 0xEDB88320;
+            let crc = 0xFFFFFFFF;
+            
+            for (let i = 0; i < data.length; i++) {
+                crc ^= data[i];
+                for (let j = 0; j < 8; j++) {
+                    if (crc & 1) {
+                        crc = (crc >>> 1) ^ poly;
+                    } else {
+                        crc >>>= 1;
+                    }
+                }
+            }
+            
+            return (crc >>> 0); // Convert to unsigned 32-bit
+        }
+
+        function hexStringToBytes(hex) {
+            const bytes = [];
+            for (let i = 0; i < hex.length; i += 2) {
+                bytes.push(parseInt(hex.substr(i, 2), 16));
+            }
+            return bytes;
+        }
+
+        function bytesToHex(bytes) {
+            return bytes.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+        }
+
+        function uint32ToLittleEndianBytes(value) {
+            return [
+                value & 0xFF,
+                (value >> 8) & 0xFF,
+                (value >> 16) & 0xFF,
+                (value >> 24) & 0xFF
+            ];
+        }
+
+        function xorBytes(a, b) {
+            return a.map((byte, i) => byte ^ b[i]);
+        }
+
+        function createByteCube(byte, className, tooltip, index) {
+            const cube = document.createElement('div');
+            cube.className = `byte-cube ${className}`;
+            cube.textContent = byte.toString(16).padStart(2, '0').toUpperCase();
+            cube.setAttribute('data-tooltip', `${tooltip} [${index}]: 0x${byte.toString(16).padStart(2, '0').toUpperCase()}`);
+            return cube;
+        }
+
+        function createByteContainer(bytes, classNames, tooltips, title) {
+            const container = document.createElement('div');
+            container.innerHTML = `<h3 style="text-align: center; margin-bottom: 10px; color: #ffc107;">${title}</h3>`;
+            
+            const byteContainer = document.createElement('div');
+            byteContainer.className = 'byte-container';
+            
+            bytes.forEach((byte, i) => {
+                const className = Array.isArray(classNames) ? classNames[i] : classNames;
+                const tooltip = Array.isArray(tooltips) ? tooltips[i] : tooltips;
+                byteContainer.appendChild(createByteCube(byte, className, tooltip, i));
+            });
+            
+            container.appendChild(byteContainer);
+            return container;
+        }
+
+        function generateVisualization() {
+            const newKeyHex = document.getElementById('newKey').value;
+            const currentKeyHex = document.getElementById('currentKey').value;
+            const keyNumber = parseInt(document.getElementById('keyNumber').value, 16);
+            const keyVersion = parseInt(document.getElementById('keyVersion').value, 16);
+
+            if (newKeyHex.length !== 32 || currentKeyHex.length !== 32) {
+                alert('Keys must be exactly 32 hex characters (16 bytes)');
+                return;
+            }
+
+            const newKey = hexStringToBytes(newKeyHex);
+            const currentKey = hexStringToBytes(currentKeyHex);
+            const xorResult = xorBytes(newKey, currentKey);
+            
+            // Calculate CRC of new key
+            const crcNewKey = crc32(newKey);
+            const crcNewKeyBytes = uint32ToLittleEndianBytes(crcNewKey);
+            
+            // Calculate CRC of crypto data (command + key_number + xor_result + version)
+            const cryptoData = [0xC4, keyNumber, ...xorResult, keyVersion];
+            const crcCrypto = crc32(cryptoData);
+            const crcCryptoBytes = uint32ToLittleEndianBytes(crcCrypto);
+            
+            // Build cryptogram
+            const cryptogram = [...xorResult, keyVersion, ...crcCryptoBytes, ...crcNewKeyBytes];
+            
+            // Add padding to multiple of 16 bytes
+            const paddedCryptogram = [...cryptogram];
+            while (paddedCryptogram.length % 16 !== 0) {
+                paddedCryptogram.push(0x00);
+            }
+
+            cryptogramData = {
+                newKey,
+                currentKey,
+                xorResult,
+                keyNumber,
+                keyVersion,
+                crcNewKey,
+                crcNewKeyBytes,
+                cryptoData,
+                crcCrypto,
+                crcCryptoBytes,
+                cryptogram,
+                paddedCryptogram
+            };
+
+            currentStep = 0;
+            updateStepButtons();
+            showStep(0);
+        }
+
+        function showStep(step) {
+            currentStep = step;
+            updateStepButtons();
+            
+            const visualization = document.getElementById('visualization');
+            visualization.innerHTML = '';
+
+            const stepDiv = document.createElement('div');
+            stepDiv.className = 'visualization';
+
+            switch(step) {
+                case 0:
+                    showInitialKeys(stepDiv);
+                    break;
+                case 1:
+                    showXorOperation(stepDiv);
+                    break;
+                case 2:
+                    showCrcNewKey(stepDiv);
+                    break;
+                case 3:
+                    showCryptoData(stepDiv);
+                    break;
+                case 4:
+                    showCrcCrypto(stepDiv);
+                    break;
+                case 5:
+                    showCryptogram(stepDiv);
+                    break;
+                case 6:
+                    showPadding(stepDiv);
+                    break;
+                case 7:
+                    showFinalResult(stepDiv);
+                    break;
+            }
+
+            visualization.appendChild(stepDiv);
+        }
+
+        function showInitialKeys(container) {
+            container.innerHTML = `
+                <div class="step-title">Step 1: Initial Keys</div>
+                <div class="step-description">Starting with the new key and current key that will be XORed together</div>
+            `;
+            
+            container.appendChild(createByteContainer(
+                cryptogramData.newKey, 
+                'new-key', 
+                'New Key', 
+                'New Key (16 bytes)'
+            ));
+            
+            container.appendChild(createByteContainer(
+                cryptogramData.currentKey, 
+                'current-key', 
+                'Current Key', 
+                'Current Key (16 bytes)'
+            ));
+        }
+
+        function showXorOperation(container) {
+            container.innerHTML = `
+                <div class="step-title">Step 2: XOR Operation</div>
+                <div class="step-description">XOR the new key with the current key byte by byte</div>
+            `;
+            
+            container.appendChild(createByteContainer(
+                cryptogramData.newKey, 
+                'new-key', 
+                'New Key', 
+                'New Key'
+            ));
+            
+            container.innerHTML += '<div class="arrow">⊕ (XOR)</div>';
+            
+            container.appendChild(createByteContainer(
+                cryptogramData.currentKey, 
+                'current-key', 
+                'Current Key', 
+                'Current Key'
+            ));
+            
+            container.innerHTML += '<div class="arrow">↓</div>';
+            
+            container.appendChild(createByteContainer(
+                cryptogramData.xorResult, 
+                'xor-result', 
+                'XOR Result', 
+                'XOR Result (New Key ⊕ Current Key)'
+            ));
+        }
+
+        function showCrcNewKey(container) {
+            container.innerHTML = `
+                <div class="step-title">Step 3: CRC of New Key</div>
+                <div class="step-description">Calculate CRC32 of the original new key (not XORed)</div>
+            `;
+            
+            container.appendChild(createByteContainer(
+                cryptogramData.newKey, 
+                'new-key', 
+                'New Key', 
+                'New Key (input for CRC)'
+            ));
+            
+            container.innerHTML += '<div class="arrow">↓ CRC32</div>';
+            
+            const calcBox = document.createElement('div');
+            calcBox.className = 'calculation-box';
+            calcBox.innerHTML = `
+                <div class="calculation-title">CRC32 Calculation:</div>
+                <div>Input: ${bytesToHex(cryptogramData.newKey)}</div>
+                <div>CRC32: 0x${cryptogramData.crcNewKey.toString(16).padStart(8, '0').toUpperCase()}</div>
+                <div>Little Endian: ${bytesToHex(cryptogramData.crcNewKeyBytes)}</div>
+            `;
+            container.appendChild(calcBox);
+            
+            container.appendChild(createByteContainer(
+                cryptogramData.crcNewKeyBytes, 
+                'crc-new-key', 
+                'CRC New Key', 
+                'CRC of New Key (4 bytes, little endian)'
+            ));
+        }
+
+        function showCryptoData(container) {
+            container.innerHTML = `
+                <div class="step-title">Step 4: Crypto Data Construction</div>
+                <div class="step-description">Build data for CRC crypto: Command (0xC4) + Key Number + XOR Result + Version</div>
+            `;
+            
+            const classNames = [
+                'command', 'key-number',
+                ...Array(16).fill('xor-result'),
+                'version'
+            ];
+            
+            const tooltips = [
+                'Command', 'Key Number',
+                ...Array(16).fill('XOR Result'),
+                'Version'
+            ];
+            
+            container.appendChild(createByteContainer(
+                cryptogramData.cryptoData, 
+                classNames, 
+                tooltips, 
+                'Crypto Data (Command + Key# + XOR + Version)'
+            ));
+            
+            const calcBox = document.createElement('div');
+            calcBox.className = 'calculation-box';
+            calcBox.innerHTML = `
+                <div class="calculation-title">Crypto Data Breakdown:</div>
+                <div>• Command: 0xC4 (ChangeKey)</div>
+                <div>• Key Number: 0x${cryptogramData.keyNumber.toString(16).padStart(2, '0').toUpperCase()}</div>
+                <div>• XOR Result: ${bytesToHex(cryptogramData.xorResult)}</div>
+                <div>• Version: 0x${cryptogramData.keyVersion.toString(16).padStart(2, '0').toUpperCase()}</div>
+                <div><strong>Note: CRC New Key is NOT included in this calculation!</strong></div>
+            `;
+            container.appendChild(calcBox);
+        }
+
+        function showCrcCrypto(container) {
+            container.innerHTML = `
+                <div class="step-title">Step 5: CRC of Crypto Data</div>
+                <div class="step-description">Calculate CRC32 of the crypto data (without CRC New Key)</div>
+            `;
+            
+            const classNames = [
+                'command', 'key-number',
+                ...Array(16).fill('xor-result'),
+                'version'
+            ];
+            
+            container.appendChild(createByteContainer(
+                cryptogramData.cryptoData, 
+                classNames, 
+                'Crypto Data', 
+                'Crypto Data (input for CRC)'
+            ));
+            
+            container.innerHTML += '<div class="arrow">↓ CRC32</div>';
+            
+            const calcBox = document.createElement('div');
+            calcBox.className = 'calculation-box';
+            calcBox.innerHTML = `
+                <div class="calculation-title">CRC32 Calculation:</div>
+                <div>Input: ${bytesToHex(cryptogramData.cryptoData)}</div>
+                <div>CRC32: 0x${cryptogramData.crcCrypto.toString(16).padStart(8, '0').toUpperCase()}</div>
+                <div>Little Endian: ${bytesToHex(cryptogramData.crcCryptoBytes)}</div>
+            `;
+            container.appendChild(calcBox);
+            
+            container.appendChild(createByteContainer(
+                cryptogramData.crcCryptoBytes, 
+                'crc-crypto', 
+                'CRC Crypto', 
+                'CRC of Crypto Data (4 bytes, little endian)'
+            ));
+        }
+
+        function showCryptogram(container) {
+            container.innerHTML = `
+                <div class="step-title">Step 6: Cryptogram Assembly</div>
+                <div class="step-description">Combine: XOR Result + Version + CRC Crypto + CRC New Key</div>
+            `;
+            
+            const classNames = [
+                ...Array(16).fill('xor-result'),
+                'version',
+                ...Array(4).fill('crc-crypto'),
+                ...Array(4).fill('crc-new-key')
+            ];
+            
+            const tooltips = [
+                ...Array(16).fill('XOR Result'),
+                'Version',
+                ...Array(4).fill('CRC Crypto'),
+                ...Array(4).fill('CRC New Key')
+            ];
+            
+            container.appendChild(createByteContainer(
+                cryptogramData.cryptogram, 
+                classNames, 
+                tooltips, 
+                'Cryptogram (25 bytes)'
+            ));
+            
+            const calcBox = document.createElement('div');
+            calcBox.className = 'calculation-box';
+            calcBox.innerHTML = `
+                <div class="calculation-title">Cryptogram Structure:</div>
+                <div>• XOR Result: ${bytesToHex(cryptogramData.xorResult)} (16 bytes)</div>
+                <div>• Version: 0x${cryptogramData.keyVersion.toString(16).padStart(2, '0').toUpperCase()} (1 byte)</div>
+                <div>• CRC Crypto: ${bytesToHex(cryptogramData.crcCryptoBytes)} (4 bytes)</div>
+                <div>• CRC New Key: ${bytesToHex(cryptogramData.crcNewKeyBytes)} (4 bytes)</div>
+                <div><strong>Total: 25 bytes</strong></div>
+            `;
+            container.appendChild(calcBox);
+        }
+
+        function showPadding(container) {
+            container.innerHTML = `
+                <div class="step-title">Step 7: Padding for AES</div>
+                <div class="step-description">Add zero padding to reach multiple of 16 bytes (AES block size)</div>
+            `;
+            
+            const classNames = [
+                ...Array(16).fill('xor-result'),
+                'version',
+                ...Array(4).fill('crc-crypto'),
+                ...Array(4).fill('crc-new-key'),
+                ...Array(cryptogramData.paddedCryptogram.length - 25).fill('padding')
+            ];
+            
+            const tooltips = [
+                ...Array(16).fill('XOR Result'),
+                'Version',
+                ...Array(4).fill('CRC Crypto'),
+                ...Array(4).fill('CRC New Key'),
+                ...Array(cryptogramData.paddedCryptogram.length - 25).fill('Padding')
+            ];
+            
+            container.appendChild(createByteContainer(
+                cryptogramData.paddedCryptogram, 
+                classNames, 
+                tooltips, 
+                `Padded Cryptogram (${cryptogramData.paddedCryptogram.length} bytes)`
+            ));
+            
+            const calcBox = document.createElement('div');
+            calcBox.className = 'calculation-box';
+            calcBox.innerHTML = `
+                <div class="calculation-title">Padding Details:</div>
+                <div>• Original length: 25 bytes</div>
+                <div>• Padding needed: ${cryptogramData.paddedCryptogram.length - 25} bytes</div>
+                <div>• Final length: ${cryptogramData.paddedCryptogram.length} bytes (multiple of 16)</div>
+                <div>• Padding bytes: 0x00</div>
+            `;
+            container.appendChild(calcBox);
+        }
+
+        function showFinalResult(container) {
+            container.innerHTML = `
+                <div class="step-title">Step 8: Ready for AES Encryption</div>
+                <div class="step-description">The cryptogram is now ready to be encrypted with the session key</div>
+            `;
+            
+            const classNames = Array(cryptogramData.paddedCryptogram.length).fill('encrypted');
+            
+            container.appendChild(createByteContainer(
+                cryptogramData.paddedCryptogram, 
+                classNames, 
+                'Ready for Encryption', 
+                `Final Cryptogram (${cryptogramData.paddedCryptogram.length} bytes) - Ready for AES-CBC`
+            ));
+            
+            const calcBox = document.createElement('div');
+            calcBox.className = 'calculation-box';
+            calcBox.innerHTML = `
+                <div class="calculation-title">Next Steps:</div>
+                <div>1. Encrypt this ${cryptogramData.paddedCryptogram.length}-byte cryptogram with AES-CBC</div>
+                <div>2. Use session key derived from authentication</div>
+                <div>3. Use current session IV</div>
+                <div>4. Send as: 0xC4 + Key# + Encrypted_Cryptogram</div>
+                <div>5. Update session IV with last 16 bytes of encrypted result</div>
+            `;
+            container.appendChild(calcBox);
+            
+            const finalBox = document.createElement('div');
+            finalBox.className = 'calculation-box';
+            finalBox.innerHTML = `
+                <div class="calculation-title">Complete Data Flow:</div>
+                <div>📝 New Key → Current Key → ⊕ XOR</div>
+                <div>🔢 CRC32(New Key) → CRC New Key</div>
+                <div>📊 Command + Key# + XOR + Version → CRC32 → CRC Crypto</div>
+                <div>🔗 XOR + Version + CRC Crypto + CRC New Key → Cryptogram</div>
+                <div>📦 Cryptogram + Padding → AES Ready</div>
+                <div>🔒 AES-CBC(Cryptogram) → Final Encrypted Payload</div>
+            `;
+            container.appendChild(finalBox);
+        }
+
+        function updateStepButtons() {
+            const buttons = document.querySelectorAll('.step-btn');
+            buttons.forEach((btn, index) => {
+                btn.classList.toggle('active', index === currentStep);
+            });
+        }
+
+        // Initialize with default values
+        generateVisualization();
+    </script>
+</body>
+</html>

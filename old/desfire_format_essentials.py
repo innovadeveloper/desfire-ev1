@@ -313,15 +313,15 @@ class DESFireReaderConnection:
         for i, reader in enumerate(reader_list):
             print(f"  [{i}] {reader}")
         
-        # Seleccionar lector
-        reader_index = 0
-        if len(reader_list) > 1:
-            try:
-                reader_index = int(input(f"Seleccione un lector (0-{len(reader_list)-1}): "))
-                if reader_index < 0 or reader_index >= len(reader_list):
-                    reader_index = 0
-            except ValueError:
-                reader_index = 0
+        # Seleccionar lector (antes 0)
+        reader_index = 2
+        # if len(reader_list) > 1:
+        #     try:
+        #         reader_index = int(input(f"Seleccione un lector (0-{len(reader_list)-1}): "))
+        #         if reader_index < 0 or reader_index >= len(reader_list):
+        #             reader_index = 0
+        #     except ValueError:
+        #         reader_index = 0
         
         self.reader = reader_list[reader_index]
         print(f"Usando lector: {self.reader}")
