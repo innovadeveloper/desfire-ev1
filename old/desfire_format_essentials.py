@@ -731,6 +731,8 @@ class DESFireVerifyCommands:
                 settings = response[0]
                 key_count = response[1]
                 
+                # En DESFire EV1, el tipo de clave no se refleja directamente en Get Key Settings
+                # después de un cambio individual de clave. Se debe determinar mediante otros métodos.
                 settings_info = {
                     'settings': settings,
                     'key_count': key_count,
@@ -738,7 +740,7 @@ class DESFireVerifyCommands:
                     'list_apps_no_auth': bool(settings & 0x02),
                     'create_delete_no_auth': bool(settings & 0x04),
                     'config_changeable': bool(settings & 0x08),
-                    'key_type': 'AES' if settings & 0x80 else 'DES/3DES'
+                    'key_type': 'Indeterminado (verificar por autenticación)'  # Será determinado más adelante
                 }
                 
                 print(f"✅ Configuración obtenida:")
@@ -800,6 +802,42 @@ class DESFireVerifyCommands:
             return False, 0
     
     @staticmethod
+    def detect_key_type(connection: DESFireReaderConnection, key_no: int = 0) -> str:
+        """
+        Detecta el tipo de clave mediante pruebas de autenticación
+        
+        Args:
+            connection: Conexión con el lector
+            key_no: Número de clave a verificar
+            
+        Returns:
+            str: Tipo de clave detectado ('AES', 'DES', 'Desconocido')
+        """
+        print(f"\n=== DETECCIÓN DE TIPO DE CLAVE #{key_no} ===")
+        
+        # Crear instancia temporal de autenticación para pruebas
+        temp_auth = DESFireAuthenticate(connection)
+        
+        # Probar con clave AES por defecto modificada (la que usamos en el cambio)
+        aes_key = bytes([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                        0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F])
+        
+        print("🔍 Probando autenticación AES...")
+        if temp_auth.authenticate_aes(key_no, aes_key):
+            print("✅ Autenticación AES exitosa")
+            return 'AES'
+        
+        # Si AES falla, probar con DES por defecto
+        print("🔍 Probando autenticación DES...")
+        des_key = bytes([0x00] * 8)
+        if temp_auth.authenticate_des(key_no, des_key):
+            print("✅ Autenticación DES exitosa")
+            return 'DES'
+        
+        print("❌ No se pudo determinar el tipo de clave")
+        return 'Desconocido'
+    
+    @staticmethod
     def verify_card_state(connection: DESFireReaderConnection) -> bool:
         """
         Verifica el estado completo de la tarjeta antes del formateo
@@ -828,19 +866,25 @@ class DESFireVerifyCommands:
             print("⚠️  Advertencia: No se pudo obtener versión de clave maestra")
             verification_success = False
         
-        # 3. Resumen de verificación
+        # 3. Detectar tipo real de clave mediante autenticación
+        actual_key_type = DESFireVerifyCommands.detect_key_type(connection, 0)
+        
+        # 4. Resumen de verificación
         print("\n" + "-"*40)
         print("RESUMEN DE VERIFICACIÓN:")
         print("-"*40)
         
         if settings_success and version_success:
             print("✅ Estado de la tarjeta verificado correctamente")
+            print(f"🔑 Tipo de clave real detectado: {actual_key_type}")
             
-            # Determinar tipo de autenticación recomendado
-            if settings_info.get('key_type') == 'AES':
+            # Determinar tipo de autenticación recomendado basado en detección real
+            if actual_key_type == 'AES':
                 print("📋 Recomendación: Usar autenticación AES para formateo")
-            else:
+            elif actual_key_type == 'DES':
                 print("📋 Recomendación: Usar autenticación DES para formateo")
+            else:
+                print("📋 Recomendación: Probar ambos tipos de autenticación")
             
             if key_version == 0x00:
                 print("🔑 La clave maestra está en estado por defecto")
