@@ -1116,11 +1116,19 @@ class DESFireChangeKey:
             
             return False
     
-    # Método completo actualizado
-    def change_key_aes_to_des(self, key_no: int = 0, new_des_key: bytes = None, 
+
+    def change_key_aes_to_des(self, key_no: int = 0, new_des_key: bytes = None,
                             key_version: int = 0x01) -> bool:
         """
-        Cambia una clave AES a DES usando la misma lógica que funciona para DES→AES
+        Cambia una clave AES a DES
+        
+        Args:
+            key_no: Número de clave a cambiar (0-13)
+            new_des_key: Nueva clave DES (8 bytes). Si es None, usa clave por defecto
+            key_version: Versión de la nueva clave (0x01 por defecto)
+        
+        Returns:
+            bool: True si el cambio fue exitoso
         """
         if not self.auth.is_authenticated():
             print("Error: Debe autenticarse antes de cambiar claves")
@@ -1132,9 +1140,9 @@ class DESFireChangeKey:
         
         print(f"\n=== CAMBIO DE CLAVE #{key_no} DE AES A DES ===")
         
-        # Clave DES por defecto si no se especifica
+        # Clave DES por defecto si no se especifica (8 bytes de ceros)
         if new_des_key is None:
-            new_des_key = bytes([0x00] * 8)
+            new_des_key = bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
         
         if len(new_des_key) != 8:
             print(f"Error: Clave DES debe ser de 8 bytes (actual: {len(new_des_key)})")
@@ -1144,16 +1152,10 @@ class DESFireChangeKey:
             print(f"Nueva clave DES: {new_des_key.hex().upper()}")
             print(f"Versión de clave: 0x{key_version:02X}")
             
-            # 1. Preparar criptograma usando lógica probada
-            # cryptogram_data = self._prepare_change_key_cryptogram_aes_to_des(
-            #     new_des_key, key_version, key_no
-            # )
-
-            cryptogram_data = self._prepare_change_key_cryptogram_aes_to_des_correct(
+            # 1. Preparar criptograma para DES
+            cryptogram_data = self._prepare_change_key_cryptogram_aes_to_des(
                 new_des_key, key_version, key_no
             )
-
-            
             
             if not cryptogram_data:
                 print("Error: No se pudo preparar el criptograma")
@@ -1174,74 +1176,187 @@ class DESFireChangeKey:
             traceback.print_exc()
             print(f"Error en cambio de clave: {e}")
             return False
-        
+
+
     def _prepare_change_key_cryptogram_aes_to_des(self, new_key: bytes, version: int, key_no: int) -> bytes:
         """
-        Prepara el criptograma para el cambio de clave AES a DES
-        Estructura: new_key(8) + XOR(old[:8], new_key)(8) + version(1) + CRC32(4) = 21 bytes
+        Prepara el criptograma para cambio de AES a DES
+        
+        DIFERENCIAS CLAVE vs AES->AES:
+        1. La nueva clave DES es de 8 bytes (no 16)
+        2. Se duplica la clave DES para formar 16 bytes (protocolo DESFire)
+        3. La versión se codifica en los bits de paridad de la primera mitad
+        4. NO se usa flag AES (0x80) en el comando
         
         Args:
             new_key: Nueva clave DES (8 bytes)
             version: Versión de la clave
             key_no: Número de clave
-            
+        
         Returns:
             bytes: Criptograma preparado
         """
-        print("✅ Preparando criptograma AES→DES siguiendo implementación Java...")
+        print("Preparando criptograma AES->DES según protocolo DESFire...")
         
-        # Clave AES actual 
-        current_aes_key = bytes([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-                                0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F])
+        # ✅ ESTRUCTURA PARA DES: Duplicar clave de 8 bytes a 16 bytes
+        # La primera mitad lleva la versión en bits de paridad
+        # La segunda mitad es copia exacta de los primeros 8 bytes
         
-        # 1. Crear plaintext de 32 bytes (como en Java línea 320)
-        plaintext = bytearray(32)
+        # Codificar versión en los bits de paridad de la primera mitad
+        first_half = self._encode_version_in_parity_bits(new_key, version)
+        second_half = new_key  # Copia exacta
         
-        # 2. Copiar nueva clave DES (8 bytes) 
-        plaintext[0:8] = new_key
+        # Criptograma: [8 bytes con versión] + [8 bytes copia]
+        cryptogram = bytearray(first_half + second_half)
         
-        # 3. Para DES: duplicar la clave para hacer 16 bytes internamente (Java líneas 331-335)
-        plaintext[8:16] = new_key  # Duplicar clave DES
-        extended_new_key = bytes(plaintext[0:16])  # 16 bytes total
+        print(f"Clave DES original: {new_key.hex().upper()}")
+        print(f"Primera mitad (con versión): {first_half.hex().upper()}")
+        print(f"Segunda mitad (copia): {second_half.hex().upper()}")
+        print(f"Criptograma base (16 bytes): {cryptogram.hex().upper()}")
         
-        # 4. XOR con clave antigua si es diferente key number (Java líneas 352-356)
-        # Para PICC master key #0, NO se aplica XOR porque (keyNo & 0x0F) == kno (0)
-        if (key_no & 0x0F) != 0:  # Si no es la misma clave autenticada  
-            for i in range(16):
-                plaintext[i] ^= current_aes_key[i % 16]
-        else:
-            print("PICC master key: NO se aplica XOR (misma clave autenticada)")
+        # ✅ CRC32 debe incluir comando + key_no (SIN flag AES) + criptograma
+        # IMPORTANTE: Para DES, NO se usa el flag 0x80, solo el key_no
+        command_bytes = bytes([self.COMMAND_CHANGE_KEY, key_no])  # C4 00 (para clave 0)
         
-        print(f"Nueva clave DES extendida: {extended_new_key.hex().upper()}")
-        print(f"Plaintext después de XOR: {plaintext[0:16].hex().upper()}")
+        # Calcular CRC32 sobre comando + key_no + criptograma
+        crc32_data = command_bytes + cryptogram
+        crc32_value = self.crypto_utils.calculate_crc32(crc32_data)
+        crc_bytes = struct.pack('<I', crc32_value)  # Little endian
         
-        # 5. Calcular CRC32 sobre Command + KeyNo + newKey (Java líneas 377-382)
-        # nklen = 16 para DES extendido, addAesKeyVersionByte = 0 para DES
-        crc_data = bytearray()
-        crc_data.append(self.COMMAND_CHANGE_KEY)  # 0xC4
-        crc_data.append(key_no)  # 0x00 para PICC master key
-        crc_data.extend(plaintext[0:16])  # Los 16 bytes de nueva clave
-        
-        crc32_value = self.crypto_utils.calculate_crc32(crc_data)
-        crc_bytes = struct.pack('<I', crc32_value)
-        
-        print(f"Datos para CRC32 (18 bytes): {crc_data.hex().upper()}")
+        print(f"Comando + key_no: {command_bytes.hex().upper()}")
+        print(f"Datos para CRC32: {crc32_data.hex().upper()}")
         print(f"CRC32 calculado: {crc32_value:08X} -> {crc_bytes.hex().upper()}")
         
-        # 6. Agregar CRC32 al plaintext en posición 16 (Java línea 382)
-        plaintext[16:20] = crc_bytes
+        # Agregar CRC32 al criptograma
+        cryptogram.extend(crc_bytes)
+        print(f"Criptograma con CRC32: {cryptogram.hex().upper()}")
         
-        # 7. Si es diferente key, agregar CRC32 de newKey también (Java líneas 384-387)
-        if (key_no & 0x0F) != 0:
-            newkey_crc32 = self.crypto_utils.calculate_crc32(extended_new_key)
-            newkey_crc_bytes = struct.pack('<I', newkey_crc32)
-            plaintext[20:24] = newkey_crc_bytes
-            print(f"CRC32 de newKey: {newkey_crc32:08X} -> {newkey_crc_bytes.hex().upper()}")
+        # ✅ Padding con ceros a múltiplo de 16 bytes (sesión AES actual)
+        # Como estamos autenticados con AES, la sesión actual es AES
+        padded_cryptogram = self.crypto_utils.pad_to_block_size(cryptogram, 16)
         
-        print(f"Plaintext completo (32 bytes): {plaintext.hex().upper()}")
+        print(f"Criptograma final con padding ({len(padded_cryptogram)} bytes): {padded_cryptogram.hex().upper()}")
         
-        return bytes(plaintext)
-    
+        return padded_cryptogram
+
+
+    def _encode_version_in_parity_bits(self, des_key: bytes, version: int) -> bytes:
+        """
+        Codifica la versión en los bits de paridad de una clave DES
+        
+        En DES, cada byte tiene 7 bits de datos + 1 bit de paridad (LSB)
+        La versión se codifica usando estos bits de paridad
+        
+        Args:
+            des_key: Clave DES de 8 bytes
+            version: Versión a codificar (8 bits)
+        
+        Returns:
+            bytes: Clave DES con versión codificada en bits de paridad
+        """
+        result = bytearray(8)
+        
+        for i in range(8):
+            # Tomar el byte original y limpiar el bit de paridad (LSB)
+            byte_without_parity = des_key[i] & 0xFE
+            
+            # Extraer el bit correspondiente de la versión
+            version_bit = (version >> i) & 0x01
+            
+            # Establecer el bit de paridad con el bit de la versión
+            result[i] = byte_without_parity | version_bit
+        
+        print(f"Versión 0x{version:02X} codificada en bits de paridad")
+        print(f"Original: {des_key.hex().upper()}")
+        print(f"Con versión: {result.hex().upper()}")
+        
+        return bytes(result)
+
+
+    def _send_change_key_command_to_des(self, key_no: int, encrypted_cryptogram: bytes) -> bool:
+        """
+        Envía el comando Change Key para cambio a DES
+        
+        DIFERENCIA CLAVE: NO se usa el flag AES (0x80)
+        Solo se envía el número de clave tal como está
+        
+        Args:
+            key_no: Número de clave
+            encrypted_cryptogram: Criptograma cifrado
+        
+        Returns:
+            bool: True si el comando fue exitoso
+        """
+        # ✅ IMPORTANTE: Para DES, NO usar flag AES (0x80)
+        key_flag = key_no  # Solo el número de clave, sin flags adicionales
+        
+        data_length = 1 + len(encrypted_cryptogram)  # 1 byte flag + criptograma
+        
+        apdu = [0x90, self.COMMAND_CHANGE_KEY, 0x00, 0x00, data_length, key_flag] + \
+            list(encrypted_cryptogram) + [0x00]
+        
+        print(f"Enviando comando Change Key para DES...")
+        print(f"Key flag: 0x{key_flag:02X} (Clave #{key_no} SIN AES flag)")
+        print(f"APDU length: {len(apdu)} bytes")
+        
+        response, sw1, sw2 = self.connection.send_apdu(apdu)
+        
+        if sw1 == OPERATION_OK and sw2 == STATUS_OK:
+            print("✅ ¡Cambio de clave AES->DES exitoso!")
+            print(f"Respuesta CMAC: {bytes(response).hex().upper() if response else 'Sin datos'}")
+            return True
+        else:
+            print(f"❌ Error en cambio de clave: SW={hex(sw1)}{hex(sw2)}")
+            if sw1 == 0x91:
+                if sw2 == 0xAE:
+                    print("  • Error de autenticación")
+                elif sw2 == 0x9D:
+                    print("  • Permiso denegado")
+                elif sw2 == 0x40:
+                    print("  • Parámetro incorrecto")
+                elif sw2 == 0x7E:
+                    print("  • Longitud incorrecta")
+                elif sw2 == 0x1E:
+                    print("  • Error de integridad (CMAC/CRC32 inválido)")
+                    print("  • Revisar cálculo de CRC32 o estructura del criptograma")
+            return False
+
+
+    def verify_key_change_des(self, key_no: int, new_des_key: bytes, expected_version: int) -> bool:
+        """
+        Verifica que el cambio de clave a DES fue exitoso
+        
+        Args:
+            key_no: Número de clave verificada
+            new_des_key: Clave DES esperada
+            expected_version: Versión esperada
+        
+        Returns:
+            bool: True si la verificación fue exitosa
+        """
+        print(f"\n=== VERIFICACIÓN DE CAMBIO A DES ===")
+        
+        try:
+            # 1. Intentar nueva autenticación DES
+            print("Intentando autenticación DES con nueva clave...")
+            
+            # Primero necesitamos "desloguearnos" de la sesión AES actual
+            # Esto se puede hacer seleccionando otra aplicación y volviendo
+            if not DESFireSelectApplication.select_master_application(self.connection):
+                print("Error: No se pudo reseleccionar aplicación maestra")
+                return False
+            
+            # Intentar autenticación DES
+            if not self.auth.authenticate_des(key_no, new_des_key):
+                print("❌ Error: No se pudo autenticar con nueva clave DES")
+                return False
+            
+            print("✅ Autenticación DES exitosa con nueva clave")
+            
+        except Exception as e:
+            print(f"Error en verificación: {e}")
+            return False
+
 
     # ################################################
     # START
@@ -1559,46 +1674,6 @@ class DESFireChangeKey:
         
         return padded_cryptogram
 
-    def change_key_aes_to_des_fixed(self, key_no: int = 0, new_des_key: bytes = None, 
-                                key_version: int = 0x01) -> bool:
-        """
-        Cambio de clave AES→DES con múltiples métodos de fallback
-        """
-        if not self.auth.is_authenticated():
-            print("Error: Debe autenticarse antes de cambiar claves")
-            return False
-        
-        print(f"\n=== CAMBIO DE CLAVE #{key_no} AES→DES (MÉTODOS MÚLTIPLES) ===")
-        
-        if new_des_key is None:
-            new_des_key = bytes([0x00] * 8)
-        
-        if len(new_des_key) != 8:
-            print(f"Error: Clave DES debe ser de 8 bytes")
-            return False
-        
-        print(f"Nueva clave DES: {new_des_key.hex().upper()}")
-        print(f"Versión de clave: 0x{key_version:02X}")
-        
-        # Método 1: Implementación Java correcta
-        print("\n🔄 Método 1: Implementación Java correcta...")
-        try:
-            cryptogram_data = self._prepare_change_key_cryptogram_aes_to_des(
-                new_des_key, key_version, key_no
-            )
-            
-            encrypted_cryptogram = self._encrypt_cryptogram(cryptogram_data)
-            
-            if encrypted_cryptogram and self._send_change_key_command_to_des(key_no, encrypted_cryptogram):
-                print("✅ ¡Cambio de clave exitoso con implementación Java!")
-                return True
-            else:
-                print("❌ Cambio de clave falló")
-        except Exception as e:
-            print(f"❌ Error en cambio de clave: {e}")
-        
-        print("❌ Cambio de clave AES→DES falló")
-        return False
 
     def _try_iso_change_key(self, key_no: int, new_des_key: bytes, key_version: int) -> bool:
         """
@@ -1655,52 +1730,6 @@ class DESFireChangeKey:
     # ################################################
     # ################################################
 
-
-    def _send_change_key_command_to_des(self, key_no: int, encrypted_cryptogram: bytes) -> bool:
-        """
-        Envía el comando ChangeKey para cambio a DES con estructura de 32 bytes
-        """
-        print("Enviando comando Change Key para AES→DES...")
-        
-        # Key number SIN flag AES (0x00 para clave #0)
-        final_key_no = key_no  # Sin flag 0x80
-        data_length = 1 + len(encrypted_cryptogram)  # 1 + 32 = 33 bytes
-        
-        apdu = [0x90, self.COMMAND_CHANGE_KEY, 0x00, 0x00, data_length, final_key_no] + \
-               list(encrypted_cryptogram) + [0x00]
-        
-        print(f"Key number: 0x{final_key_no:02X} (SIN flag AES)")
-        print(f"Criptograma cifrado: {len(encrypted_cryptogram)} bytes")
-        print(f"Data length: {data_length} (1 + {len(encrypted_cryptogram)})")
-        print(f"APDU total: {len(apdu)} bytes")
-        
-        response, sw1, sw2 = self.connection.send_apdu(apdu)
-        
-        if sw1 == OPERATION_OK and sw2 == STATUS_OK:
-            print("✅ ¡Cambio de clave AES→DES exitoso!")
-            print(f"Respuesta CMAC: {bytes(response).hex().upper() if response else 'Sin datos'}")
-            
-            # Reset autenticación
-            self.auth.authenticated_key = None
-            self.auth.session_key = None
-            self.auth.current_iv = None
-            
-            return True
-        else:
-            print(f"❌ Error en cambio de clave: SW={hex(sw1)}{hex(sw2)}")
-            
-            if sw1 == 0x91:
-                if sw2 == 0x7E:
-                    print("   • Longitud incorrecta")
-                    print(f"   • Se envió: {data_length} bytes, esperaba diferente")
-                elif sw2 == 0x1E:
-                    print("   • Error de integridad (CRC32 inválido)")
-                elif sw2 == 0x9D:
-                    print("   • Permiso denegado")
-                elif sw2 == 0xAE:
-                    print("   • Error de autenticación")
-            
-            return False
 
 
     def verify_key_change(self, key_no: int = 0, new_aes_key: bytes = None, 
@@ -1959,20 +1988,30 @@ class DESFireFormatManager:
         
         return True
     
-    def change_key_aes_to_des_complete(self, old_aes_key: bytes = None, 
-                                       new_des_key: bytes = None, key_version: int = 0x01) -> bool:
+
+    def change_key_aes_to_des_complete(self, old_aes_key: bytes = None,
+                                   new_des_key: bytes = None, key_version: int = 0x01) -> bool:
         """
         Proceso completo de cambio de clave AES a DES con verificación
         
         Args:
-            old_aes_key: Clave AES actual (16 bytes). Si es None, usa clave por defecto
+            old_aes_key: Clave AES actual (16 bytes). Si es None, usa la clave conocida
             new_des_key: Nueva clave DES (8 bytes). Si es None, usa clave por defecto
             key_version: Versión de la nueva clave
-            
+        
         Returns:
             bool: True si el cambio fue exitoso
         """
         print("=== CAMBIO COMPLETO DE CLAVE AES A DES ===")
+        
+        # Clave AES actual conocida
+        if old_aes_key is None:
+            old_aes_key = bytes([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F])
+        
+        # Clave DES por defecto (8 bytes de ceros)
+        if new_des_key is None:
+            new_des_key = bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
         
         # 1. Seleccionar aplicación maestra
         if not DESFireSelectApplication.select_master_application(self.connection):
@@ -1989,38 +2028,22 @@ class DESFireFormatManager:
             print("Error: No se pudo autenticar con clave AES actual")
             return False
         
-        key_changer = DESFireChangeKey(self.connection, self.auth)
-
-        # Ejecutar downgrade completo
-        success = key_changer.complete_aes_to_des_downgrade()
-
-        if success:
-            print("¡Downgrade exitoso! Tarjeta ahora usa DES")
-        else:
-            print("Downgrade falló")
-
         # 4. Cambiar clave
         print("\nPaso 3: Cambiando clave AES a DES...")
         key_changer = DESFireChangeKey(self.connection, self.auth)
-        
-        if not key_changer.change_key_aes_to_des_fixed(0, new_des_key, key_version):
+        if not key_changer.change_key_aes_to_des(0, new_des_key, key_version):
             print("Error: No se pudo cambiar la clave")
             return False
         
-        
-        
         # 5. Verificar cambio
         print("\nPaso 4: Verificando cambio de clave...")
-        if not key_changer.verify_key_change_to_des(0, new_des_key, key_version):
+        if not key_changer.verify_key_change_des(0, new_des_key, key_version):
             print("Error: La verificación del cambio falló")
             return False
         
         print("\n🎉 ¡Cambio de clave AES a DES completado exitosamente!")
         print("La tarjeta ahora usa autenticación DES.")
-        
         return True
-    
-
 
     def format_card_with_des_auth(self, key_data: bytes = None, confirm: bool = True, 
                                   verify_first: bool = True) -> bool:
@@ -2121,6 +2144,15 @@ def ejemplo_formateo():
                 result = True  # No es un error, solo cancelado
                 
         elif choice == "4":
+            # Clave AES actual (la que conocemos)
+            current_aes_key = bytes([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F])
+            
+            # Nueva clave DES deseada (8 bytes)
+            new_des_key = bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+            
+            # Versión de la nueva clave
+            key_version = 0x01
             # Cambio de clave AES a DES
             print("\n=== OPCIÓN 4: Cambio de clave AES a DES ===")
             print("Esta opción cambiará la clave maestra de AES a DES sin formatear.")
@@ -2128,8 +2160,11 @@ def ejemplo_formateo():
             
             confirm = input("¿Desea continuar? (s/n): ").lower()
             if confirm == 's':
-                result = manager.change_key_aes_to_des_complete()
-                # result = manager.change_key_aes_to_des_complete_alternative()
+                result = manager.change_key_aes_to_des_complete(
+                    old_aes_key=current_aes_key,
+                    new_des_key=new_des_key,
+                    key_version=key_version
+                )
             else:
                 print("Operación cancelada.")
                 result = True  # No es un error, solo cancelado
