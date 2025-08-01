@@ -672,9 +672,11 @@ class DESFireAuthenticate:
                 # 13. Generar clave de sesión (para DES es más simple)
                 self.session_key = bytes(rnd_a[:4] + rnd_b[:4])
                 self.authenticated_key = key_no
-                self.current_iv = bytes(8)  # IV inicial
+                # ✅ CORRECCIÓN CRÍTICA: IV son los últimos 8 bytes del token cifrado
+                self.current_iv = bytes(encrypted_token[-8:])
                 
                 print(f"Clave de sesión: {self.session_key.hex()}")
+                print(f"IV para siguiente comando: {self.current_iv.hex()}")
                 return True
             else:
                 print("Error: Respuesta de la tarjeta no coincide")
@@ -869,6 +871,290 @@ class DESFireChangeKey:
         self.auth = auth
         self.crypto_utils = DESFireCryptoUtils()
     
+    def change_key_des_to_aes_recovery(self, key_no: int = 0, new_aes_key: bytes = None, 
+                                      key_version: int = 0x01) -> bool:
+        """
+        Método de recuperación para tarjetas con estado interno inconsistente
+        Prueba 3 métodos alternativos para tarjetas que han tenido múltiples cambios
+        """
+        if not self.auth.is_authenticated():
+            print("Error: Debe autenticarse antes de cambiar claves")
+            return False
+        
+        if not CRYPTO_AVAILABLE:
+            print("Error: PyCryptodome requerido para cambio de claves")
+            return False
+        
+        print(f"\n=== RECUPERACIÓN DE CLAVE #{key_no} - MÉTODOS ALTERNATIVOS ===")
+        
+        # Clave AES por defecto si no se especifica
+        if new_aes_key is None:
+            new_aes_key = bytes([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F])
+        
+        if len(new_aes_key) != 16:
+            print(f"Error: Clave AES debe ser de 16 bytes (actual: {len(new_aes_key)})")
+            return False
+        
+        print(f"Nueva clave AES: {new_aes_key.hex().upper()}")
+        print(f"Versión de clave: 0x{key_version:02X}")
+        print(f"Clave de sesión: {self.auth.session_key.hex().upper()}")
+        print(f"IV actual: {self.auth.current_iv.hex().upper()}")
+        
+        # MÉTODO 1: Sin CRC32 (para misma clave)
+        print(f"\n--- MÉTODO 1: Sin CRC32 (para cambio de misma clave) ---")
+        if self._re_authenticate_and_try(lambda: self._try_method_no_crc32(new_aes_key, key_version, key_no), "Método 1"):
+            return True
+        
+        # MÉTODO 2: CRC32 solo sobre nueva clave
+        print(f"\n--- MÉTODO 2: CRC32 solo sobre nueva clave ---")
+        if self._re_authenticate_and_try(lambda: self._try_method_crc32_key_only(new_aes_key, key_version, key_no), "Método 2"):
+            return True
+        
+        # MÉTODO 3: Estructura especial - padding antes del CRC32
+        print(f"\n--- MÉTODO 3: Estructura especial con padding antes de CRC32 ---")
+        if self._re_authenticate_and_try(lambda: self._try_method_special_structure(new_aes_key, key_version, key_no), "Método 3"):
+            return True
+        
+        # MÉTODO 4: Solo nueva clave (16 bytes exactos)
+        print(f"\n--- MÉTODO 4: Solo nueva clave AES (16 bytes exactos) ---")
+        if self._re_authenticate_and_try(lambda: self._try_method_key_only(new_aes_key, key_version, key_no), "Método 4"):
+            return True
+        
+        # MÉTODO 5: Estructura mínima con versión al final
+        print(f"\n--- MÉTODO 5: Estructura mínima alternativa ---")
+        if self._re_authenticate_and_try(lambda: self._try_method_minimal_alternative(new_aes_key, key_version, key_no), "Método 5"):
+            return True
+        
+        print("❌ TODOS LOS MÉTODOS DE RECUPERACIÓN FALLARON")
+        print("💡 RECOMENDACIÓN: Formatear la tarjeta completamente para resetear estado interno")
+        print("🔧 ALTERNATIVA: Mantener la tarjeta con clave DES y no cambiar más el tipo")
+        return False
+    
+    def _re_authenticate_and_try(self, method_func, method_name: str) -> bool:
+        """
+        Re-autentica con DES antes de cada método para evitar pérdida de sesión
+        """
+        print(f"Re-autenticando antes de {method_name}...")
+        
+        # 1. Reseleccionar aplicación maestra
+        if not DESFireSelectApplication.select_master_application(self.connection):
+            print(f"❌ Error al reseleccionar aplicación para {method_name}")
+            return False
+        
+        # 2. Re-autenticar con DES usando clave por defecto
+        old_des_key = bytes(8)  # Clave DES por defecto
+        if not self.auth.authenticate_des(0, old_des_key):
+            print(f"❌ Error al re-autenticar para {method_name}")
+            return False
+        
+        print(f"✅ Re-autenticación exitosa para {method_name}")
+        print(f"Nueva clave de sesión: {self.auth.session_key.hex().upper()}")
+        print(f"Nuevo IV: {self.auth.current_iv.hex().upper()}")
+        
+        # 3. Ejecutar el método
+        return method_func()
+    
+    def _try_method_no_crc32(self, new_key: bytes, version: int, key_no: int) -> bool:
+        """
+        Método 1: Estructura simple sin CRC32
+        NewKey (16) + Version (1) + Padding (7) = 24 bytes
+        """
+        import struct
+        
+        # Estructura simple: NewKey + Version (SIN CRC32)
+        cryptogram = bytearray(new_key)
+        cryptogram.append(version)
+        
+        print(f"Criptograma base (sin CRC32): {cryptogram.hex().upper()}")
+        
+        # Padding con ceros hasta múltiplo de 8 bytes
+        padded_length = ((len(cryptogram) + 7) // 8) * 8
+        padding_needed = padded_length - len(cryptogram)
+        if padding_needed > 0:
+            cryptogram.extend(b'\x00' * padding_needed)
+        
+        print(f"Con padding: {cryptogram.hex().upper()} ({len(cryptogram)} bytes)")
+        
+        # Cifrar con IV correcto
+        try:
+            iv = self.auth.current_iv if self.auth.current_iv else bytes(8)
+            encrypted = self.crypto_utils.des_encrypt(cryptogram, self.auth.session_key, iv)
+            encrypted_bytes = bytes(encrypted)
+            
+            print(f"Cifrado: {encrypted_bytes.hex().upper()}")
+            
+            # Enviar comando
+            return self._send_change_key_command(key_no, encrypted_bytes)
+            
+        except Exception as e:
+            print(f"Error en método 1: {e}")
+            return False
+    
+    def _try_method_crc32_key_only(self, new_key: bytes, version: int, key_no: int) -> bool:
+        """
+        Método 2: CRC32 solo sobre la nueva clave (sin versión)
+        NewKey (16) + Version (1) + CRC32(NewKey) (4) + Padding (3) = 24 bytes
+        """
+        import struct
+        
+        # CRC32 solo sobre la nueva clave
+        crc32_value = self.crypto_utils.calculate_crc32(new_key)
+        crc32_bytes = struct.pack('<I', crc32_value)
+        
+        print(f"CRC32 solo sobre nueva clave: {crc32_value:08X} -> {crc32_bytes.hex().upper()}")
+        
+        # Estructura: NewKey + Version + CRC32(NewKey)
+        cryptogram = bytearray(new_key)
+        cryptogram.append(version)
+        cryptogram.extend(crc32_bytes)
+        
+        print(f"Criptograma: {cryptogram.hex().upper()}")
+        
+        # Padding con ceros hasta múltiplo de 8 bytes
+        padded_length = ((len(cryptogram) + 7) // 8) * 8
+        padding_needed = padded_length - len(cryptogram)
+        if padding_needed > 0:
+            cryptogram.extend(b'\x00' * padding_needed)
+        
+        print(f"Con padding: {cryptogram.hex().upper()} ({len(cryptogram)} bytes)")
+        
+        # Cifrar con IV correcto
+        try:
+            iv = self.auth.current_iv if self.auth.current_iv else bytes(8)
+            encrypted = self.crypto_utils.des_encrypt(cryptogram, self.auth.session_key, iv)
+            encrypted_bytes = bytes(encrypted)
+            
+            print(f"Cifrado: {encrypted_bytes.hex().upper()}")
+            
+            # Enviar comando
+            return self._send_change_key_command(key_no, encrypted_bytes)
+            
+        except Exception as e:
+            print(f"Error en método 2: {e}")
+            return False
+    
+    def _try_method_special_structure(self, new_key: bytes, version: int, key_no: int) -> bool:
+        """
+        Método 3: Estructura especial - padding ANTES del CRC32
+        """
+        import struct
+        
+        # Criptograma base
+        cryptogram_base = bytearray(new_key)
+        cryptogram_base.append(version)
+        
+        print(f"Criptograma base: {cryptogram_base.hex().upper()}")
+        
+        # Padding ANTES del CRC32
+        padded_length = ((len(cryptogram_base) + 7) // 8) * 8
+        padding_needed = padded_length - len(cryptogram_base)
+        if padding_needed > 0:
+            cryptogram_padded = cryptogram_base + b'\x00' * padding_needed
+        else:
+            cryptogram_padded = cryptogram_base
+        
+        print(f"Con padding previo: {cryptogram_padded.hex().upper()}")
+        
+        # CRC32 sobre el criptograma ya padded
+        crc32_value = self.crypto_utils.calculate_crc32(cryptogram_padded)
+        crc32_bytes = struct.pack('<I', crc32_value)
+        
+        print(f"CRC32 sobre padded: {crc32_value:08X} -> {crc32_bytes.hex().upper()}")
+        
+        # Estructura final
+        cryptogram_final = cryptogram_padded + crc32_bytes
+        
+        # Padding final si es necesario
+        final_padded_length = ((len(cryptogram_final) + 7) // 8) * 8
+        final_padding_needed = final_padded_length - len(cryptogram_final)
+        if final_padding_needed > 0:
+            cryptogram_final.extend(b'\x00' * final_padding_needed)
+        
+        print(f"Estructura final: {cryptogram_final.hex().upper()} ({len(cryptogram_final)} bytes)")
+        
+        # Cifrar con IV correcto
+        try:
+            iv = self.auth.current_iv if self.auth.current_iv else bytes(8)
+            encrypted = self.crypto_utils.des_encrypt(cryptogram_final, self.auth.session_key, iv)
+            encrypted_bytes = bytes(encrypted)
+            
+            print(f"Cifrado: {encrypted_bytes.hex().upper()}")
+            
+            # Enviar comando
+            return self._send_change_key_command(key_no, encrypted_bytes)
+            
+        except Exception as e:
+            print(f"Error en método 3: {e}")
+            return False
+    
+    def _try_method_key_only(self, new_key: bytes, version: int, key_no: int) -> bool:
+        """
+        Método 4: Solo nueva clave AES (16 bytes exactos) - sin versión, sin CRC32
+        Para tarjetas con estado muy corrupto
+        """
+        # Solo la nueva clave, nada más
+        cryptogram = bytearray(new_key)  # 16 bytes exactos
+        
+        print(f"Criptograma (solo clave): {cryptogram.hex().upper()} ({len(cryptogram)} bytes)")
+        
+        # Padding hasta 24 bytes (múltiplo de 8)
+        padding_needed = 24 - len(cryptogram)
+        cryptogram.extend(b'\x00' * padding_needed)
+        
+        print(f"Con padding: {cryptogram.hex().upper()} ({len(cryptogram)} bytes)")
+        
+        # Cifrar con IV correcto
+        try:
+            iv = self.auth.current_iv if self.auth.current_iv else bytes(8)
+            encrypted = self.crypto_utils.des_encrypt(cryptogram, self.auth.session_key, iv)
+            encrypted_bytes = bytes(encrypted)
+            
+            print(f"Cifrado: {encrypted_bytes.hex().upper()}")
+            
+            # Enviar comando
+            return self._send_change_key_command(key_no, encrypted_bytes)
+            
+        except Exception as e:
+            print(f"Error en método 4: {e}")
+            return False
+    
+    def _try_method_minimal_alternative(self, new_key: bytes, version: int, key_no: int) -> bool:
+        """
+        Método 5: Estructura mínima con versión al final
+        Versión + NewKey - orden invertido para confundir el parser corrupto
+        """
+        import struct
+        
+        # Estructura: Version (1) + NewKey (16) - orden invertido
+        cryptogram = bytearray([version])
+        cryptogram.extend(new_key)
+        
+        print(f"Criptograma (versión + clave): {cryptogram.hex().upper()}")
+        
+        # Padding hasta múltiplo de 8 bytes
+        padded_length = ((len(cryptogram) + 7) // 8) * 8
+        padding_needed = padded_length - len(cryptogram)
+        if padding_needed > 0:
+            cryptogram.extend(b'\x00' * padding_needed)
+        
+        print(f"Con padding: {cryptogram.hex().upper()} ({len(cryptogram)} bytes)")
+        
+        # Cifrar con IV correcto
+        try:
+            iv = self.auth.current_iv if self.auth.current_iv else bytes(8)
+            encrypted = self.crypto_utils.des_encrypt(cryptogram, self.auth.session_key, iv)
+            encrypted_bytes = bytes(encrypted)
+            
+            print(f"Cifrado: {encrypted_bytes.hex().upper()}")
+            
+            # Enviar comando
+            return self._send_change_key_command(key_no, encrypted_bytes)
+            
+        except Exception as e:
+            print(f"Error en método 5: {e}")
+            return False
+    
     def change_key_des_to_aes(self, key_no: int = 0, new_aes_key: bytes = None, 
                              key_version: int = 0x01) -> bool:
         """
@@ -950,19 +1236,12 @@ class DESFireChangeKey:
         
         print(f"Criptograma base: {cryptogram.hex().upper()}")
         
-        # ✅ CORRECCIÓN PRINCIPAL: CRC32 debe incluir comando + key_flag + criptograma
-        # Según código C++: Utils::CalcCrc32(u8_Command, 2, i_Cryptogram, i_Cryptogram.GetCount())
-        key_flag = key_no | self.AES_KEY_FLAG  # 0x00 | 0x80 = 0x80 para clave 0
-        command_bytes = bytes([self.COMMAND_CHANGE_KEY, key_flag])  # C4 80
-        
-        # Calcular CRC32 sobre comando + key_flag + criptograma
-        crc32_data = command_bytes + cryptogram
-        crc32_value = self.crypto_utils.calculate_crc32(crc32_data)
+        # ✅ CORRECCIÓN CRÍTICA: CRC32 solo sobre el criptograma base
+        # Para cambiar la misma clave con la que te autenticaste, NO incluir comando
+        crc32_value = self.crypto_utils.calculate_crc32(bytes(cryptogram))
         crc_bytes = struct.pack('<I', crc32_value)  # Little endian
         
-        print(f"Comando + key_flag: {command_bytes.hex().upper()}")
-        print(f"Datos para CRC32: {crc32_data.hex().upper()}")
-        print(f"CRC32 calculado: {crc32_value:08X} -> {crc_bytes.hex().upper()}")
+        print(f"CRC32 solo sobre criptograma base: {crc32_value:08X} -> {crc_bytes.hex().upper()}")
         
         # Agregar CRC32 al criptograma (NO al comando)
         cryptogram.extend(crc_bytes)
@@ -1000,13 +1279,15 @@ class DESFireChangeKey:
         print(f"IV actual: {self.auth.current_iv.hex().upper() if self.auth.current_iv else 'None'}")
         
         try:
+            # ✅ CORRECCIÓN CRÍTICA: Usar el IV correcto de la autenticación
+            iv = self.auth.current_iv if self.auth.current_iv else bytes(8)
+            print(f"IV usado para cifrado: {iv.hex().upper()}")
+            
             if len(self.auth.session_key) == 8:
-                # Sesión DES - usar DES para cifrar con IV actual
-                iv = self.auth.current_iv if self.auth.current_iv else bytes(8)
+                # Sesión DES - usar DES para cifrar con IV correcto
                 encrypted = self.crypto_utils.des_encrypt(cryptogram, self.auth.session_key, iv)
             else:
-                # Sesión AES - usar AES para cifrar con IV actual
-                iv = self.auth.current_iv if self.auth.current_iv else bytes(16)
+                # Sesión AES - usar AES para cifrar con IV correcto
                 encrypted = self.crypto_utils.aes_encrypt(cryptogram, self.auth.session_key, iv)
             
             result = bytes(encrypted)
@@ -1252,13 +1533,19 @@ class DESFireFormatManager:
             print("Error: No se pudo autenticar con clave DES actual")
             return False
         
-        # 4. Cambiar clave
-        print("\nPaso 3: Cambiando clave DES a AES...")
+        # 4. Cambiar clave con métodos de recuperación
+        print("\nPaso 3: Cambiando clave DES a AES (MÉTODOS DE RECUPERACIÓN)...")
         key_changer = DESFireChangeKey(self.connection, self.auth)
         
-        if not key_changer.change_key_des_to_aes(0, new_aes_key, key_version):
-            print("Error: No se pudo cambiar la clave")
-            return False
+        # Intentar primero método estándar
+        print("Intentando método estándar...")
+        if key_changer.change_key_des_to_aes(0, new_aes_key, key_version):
+            print("✅ Método estándar exitoso!")
+        else:
+            print("❌ Método estándar falló, usando métodos de recuperación...")
+            if not key_changer.change_key_des_to_aes_recovery(0, new_aes_key, key_version):
+                print("Error: No se pudo cambiar la clave con ningún método")
+                return False
         
         # 5. Verificar cambio
         print("\nPaso 4: Verificando cambio de clave...")
